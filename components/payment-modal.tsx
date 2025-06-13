@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { X, CreditCard, Shield, Clock, CheckCircle, AlertCircle, RefreshCw } from "lucide-react"
+import { X, CreditCard, Shield, Clock, CheckCircle, AlertCircle, RefreshCw, Info } from "lucide-react"
 
 interface PaymentModalProps {
   isOpen: boolean
@@ -22,6 +22,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
   const [checkStatusInterval, setCheckStatusInterval] = useState<NodeJS.Timeout | null>(null)
   const [paymentAttempts, setPaymentAttempts] = useState(0)
   const [statusCheckCount, setStatusCheckCount] = useState(0)
+  const [lastStatusMessage, setLastStatusMessage] = useState("")
 
   const planPrice = 19.9
 
@@ -43,25 +44,24 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
       }
 
       setStatusCheckCount(0)
+      setLastStatusMessage("Iniciando verificação de status...")
 
-      // Configurar um novo intervalo para verificar o status a cada 5 segundos
+      // Configurar um novo intervalo para verificar o status
       const interval = setInterval(async () => {
         try {
-          // Incrementar contador de verificações
           setStatusCheckCount((prev) => {
             const newCount = prev + 1
 
-            // Após 12 verificações (1 minuto), reduzir a frequência
-            if (newCount === 12) {
-              console.log("⏱️ Reduzindo frequência de verificação de status para 10 segundos")
+            // Ajustar frequência baseado no número de verificações
+            if (newCount === 6) {
+              // Após 30 segundos (6 x 5s), reduzir para 10s
+              console.log("⏱️ Reduzindo frequência para 10 segundos")
               clearInterval(interval)
               const newInterval = setInterval(checkPaymentStatus, 10000)
               setCheckStatusInterval(newInterval)
-            }
-
-            // Após 30 verificações (4 minutos), reduzir ainda mais a frequência
-            if (newCount === 30) {
-              console.log("⏱️ Reduzindo frequência de verificação de status para 30 segundos")
+            } else if (newCount === 18) {
+              // Após 2 minutos adicionais, reduzir para 30s
+              console.log("⏱️ Reduzindo frequência para 30 segundos")
               clearInterval(interval)
               const newInterval = setInterval(checkPaymentStatus, 30000)
               setCheckStatusInterval(newInterval)
@@ -73,6 +73,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
           await checkPaymentStatus()
         } catch (error) {
           console.error("❌ Erro ao verificar status do pagamento:", error)
+          setLastStatusMessage("Erro na verificação - tentando novamente...")
         }
       }, 5000) // Verificar a cada 5 segundos inicialmente
 
@@ -80,29 +81,45 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
 
       // Função para verificar o status do pagamento
       async function checkPaymentStatus() {
-        // Construir URL com código e referência
-        const params = new URLSearchParams()
-        if (code) params.append("code", code)
-        if (reference) params.append("reference", reference)
+        try {
+          // Construir URL com código e referência
+          const params = new URLSearchParams()
+          if (code) params.append("code", code)
+          if (reference) params.append("reference", reference)
 
-        const response = await fetch(`/api/payment/status?${params.toString()}`)
-        const data = await response.json()
+          const response = await fetch(`/api/payment/status?${params.toString()}`)
+          const data = await response.json()
 
-        console.log("📊 Status do pagamento:", data)
+          console.log("📊 Status do pagamento:", data)
 
-        if (data.success && (data.status === "PAID" || data.status === "AVAILABLE")) {
-          // Pagamento aprovado
-          if (checkStatusInterval) clearInterval(checkStatusInterval)
-          setPaymentStatus("success")
-          setTimeout(() => {
-            onPaymentSuccess()
-            onClose()
-          }, 2000)
-        } else if (data.success && data.status === "CANCELLED") {
-          // Pagamento cancelado
-          if (checkStatusInterval) clearInterval(checkStatusInterval)
-          setPaymentStatus("error")
-          setErrorMessage("Pagamento cancelado pelo usuário ou expirado")
+          if (data.success) {
+            setLastStatusMessage(data.message || data.statusText || "Verificando...")
+
+            if (data.status === "PAID" || data.status === "AVAILABLE") {
+              // Pagamento aprovado
+              if (checkStatusInterval) clearInterval(checkStatusInterval)
+              setPaymentStatus("success")
+              setLastStatusMessage("Pagamento confirmado!")
+              setTimeout(() => {
+                onPaymentSuccess()
+                onClose()
+              }, 2000)
+            } else if (data.status === "CANCELLED") {
+              // Pagamento cancelado
+              if (checkStatusInterval) clearInterval(checkStatusInterval)
+              setPaymentStatus("error")
+              setErrorMessage("Pagamento cancelado")
+            } else if (data.status === "IN_ANALYSIS") {
+              setLastStatusMessage("Pagamento em análise - aguarde...")
+            } else {
+              setLastStatusMessage(data.statusText || "Aguardando pagamento...")
+            }
+          } else {
+            setLastStatusMessage("Erro na consulta - tentando novamente...")
+          }
+        } catch (error) {
+          console.error("❌ Erro na verificação:", error)
+          setLastStatusMessage("Erro na verificação - tentando novamente...")
         }
       }
     },
@@ -116,6 +133,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
     setPaymentUrl("")
     setPaymentCode("")
     setPaymentReference("")
+    setLastStatusMessage("")
     setPaymentAttempts((prev) => prev + 1)
 
     try {
@@ -131,7 +149,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
           planId: "mensal",
           amount: planPrice,
           customerName: userName || "Cliente AutoAjuda Pro",
-          customerEmail: "c48318933288142578980@sandbox.pagseguro.com.br", // Email de comprador de teste do PagSeguro
+          customerEmail: "cliente@exemplo.com", // Email real do cliente
         }),
       })
 
@@ -167,28 +185,6 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
       console.error("❌ Erro no pagamento:", error)
       setPaymentStatus("error")
       setErrorMessage(error instanceof Error ? error.message : "Erro desconhecido")
-
-      // Se for a primeira tentativa, usar o modo de contingência
-      if (paymentAttempts <= 1) {
-        console.log("🧪 Ativando modo de contingência após erro")
-
-        // Simular resposta do PagSeguro
-        const mockCode = `PAG${Date.now()}`
-        const mockReference = `autoajuda-${Date.now()}-mock`
-        const mockUrl = `https://sandbox.pagseguro.uol.com.br/v2/checkout/payment.html?code=${mockCode}`
-
-        setPaymentUrl(mockUrl)
-        setPaymentCode(mockCode)
-        setPaymentReference(mockReference)
-        setPaymentStatus("processing")
-        setErrorMessage("")
-
-        // Abrir em nova aba
-        window.open(mockUrl, "_blank")
-
-        // Iniciar verificação periódica do status do pagamento
-        startCheckingPaymentStatus(mockCode, mockReference)
-      }
     } finally {
       setIsProcessing(false)
     }
@@ -206,6 +202,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
     setPaymentReference("")
     setPaymentAttempts(0)
     setStatusCheckCount(0)
+    setLastStatusMessage("")
     onClose()
   }
 
@@ -215,6 +212,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
 
     try {
       setIsProcessing(true)
+      setLastStatusMessage("Verificando status...")
 
       // Construir URL com código e referência
       const params = new URLSearchParams()
@@ -226,26 +224,30 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
 
       console.log("📊 Status do pagamento (verificação manual):", data)
 
-      if (data.success && (data.status === "PAID" || data.status === "AVAILABLE")) {
-        // Pagamento aprovado
-        if (checkStatusInterval) clearInterval(checkStatusInterval)
-        setPaymentStatus("success")
-        setTimeout(() => {
-          onPaymentSuccess()
-          onClose()
-        }, 2000)
-      } else if (data.success && data.status === "CANCELLED") {
-        // Pagamento cancelado
-        if (checkStatusInterval) clearInterval(checkStatusInterval)
-        setPaymentStatus("error")
-        setErrorMessage("Pagamento cancelado pelo usuário ou expirado")
+      if (data.success) {
+        if (data.status === "PAID" || data.status === "AVAILABLE") {
+          // Pagamento aprovado
+          if (checkStatusInterval) clearInterval(checkStatusInterval)
+          setPaymentStatus("success")
+          setTimeout(() => {
+            onPaymentSuccess()
+            onClose()
+          }, 2000)
+        } else if (data.status === "CANCELLED") {
+          // Pagamento cancelado
+          if (checkStatusInterval) clearInterval(checkStatusInterval)
+          setPaymentStatus("error")
+          setErrorMessage("Pagamento cancelado")
+        } else {
+          // Ainda aguardando
+          setLastStatusMessage(data.statusText || data.message || "Aguardando pagamento")
+        }
       } else {
-        // Ainda aguardando
-        setErrorMessage(`Status atual: ${data.statusText || data.status || "Aguardando pagamento"}`)
+        setLastStatusMessage("Erro ao verificar status")
       }
     } catch (error) {
       console.error("❌ Erro ao verificar status manualmente:", error)
-      setErrorMessage("Erro ao verificar status do pagamento")
+      setLastStatusMessage("Erro ao verificar status")
     } finally {
       setIsProcessing(false)
     }
@@ -368,11 +370,21 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
               <p className="text-gray-600">
                 Você foi redirecionado para o PagSeguro. Complete o pagamento na nova aba.
               </p>
-              <p className="text-sm text-gray-500 mt-2">Aguardando confirmação do pagamento...</p>
-              <p className="text-xs text-gray-400 mt-1">
+
+              {/* Status da verificação */}
+              {lastStatusMessage && (
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center gap-2 justify-center">
+                    <Info className="h-4 w-4 text-blue-600" />
+                    <p className="text-sm text-blue-700">{lastStatusMessage}</p>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-gray-400 mt-2">
                 Verificações: {statusCheckCount}{" "}
                 {statusCheckCount > 0 &&
-                  `(última há ${Math.floor(statusCheckCount > 12 ? (statusCheckCount > 30 ? 30 : 10) : 5)} segundos)`}
+                  `(última há ${Math.floor(statusCheckCount > 6 ? (statusCheckCount > 18 ? 30 : 10) : 5)} segundos)`}
               </p>
 
               <div className="mt-6 space-y-4">
@@ -404,10 +416,6 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
                     Verificar Status do Pagamento
                   </Button>
                 </div>
-
-                {errorMessage && (
-                  <p className="text-sm text-amber-600 mt-2 bg-amber-50 p-2 rounded-md">{errorMessage}</p>
-                )}
               </div>
             </div>
           )}
@@ -435,6 +443,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
                   onClick={() => {
                     setPaymentStatus("idle")
                     setErrorMessage("")
+                    setLastStatusMessage("")
                   }}
                   className="bg-blue-500 hover:bg-blue-600 text-white"
                 >
