@@ -25,6 +25,7 @@ import {
   Cpu,
   Trash2,
   Bot,
+  RefreshCw,
 } from "lucide-react"
 import PaymentModal from "./payment-modal"
 
@@ -51,6 +52,9 @@ interface ChatManagerProps {
 }
 
 const FREE_MESSAGE_LIMIT = 5
+
+// Adicione esta função no início do arquivo, fora do componente
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export default function ChatManager({ isOpen, onClose, userName }: ChatManagerProps) {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([
@@ -86,6 +90,11 @@ Como você gostaria que eu te chamasse?`,
   const [showAreaButtons, setShowAreaButtons] = useState(false)
   const [showAreaOptions, setShowAreaOptions] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
+
+  // Adicione estes novos estados
+  const [isRetrying, setIsRetrying] = useState(false)
+  const [retryTimeout, setRetryTimeout] = useState<NodeJS.Timeout | null>(null)
+  const [lastMessageError, setLastMessageError] = useState<string | null>(null)
 
   const currentChat = chatSessions.find((chat) => chat.id === currentChatId)
   const userMessageCount = currentChat?.messageCount || 0
@@ -139,6 +148,15 @@ Como você gostaria que eu te chamasse?`,
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // Limpar timeout de retry quando o componente for desmontado
+  useEffect(() => {
+    return () => {
+      if (retryTimeout) {
+        clearTimeout(retryTimeout)
+      }
+    }
+  }, [retryTimeout])
 
   // Sincronizar mensagens com a sessão atual
   useEffect(() => {
@@ -272,36 +290,44 @@ Como você gostaria que eu te chamasse?`,
     handleSendMessage(message)
   }
 
-  // Função para tentar obter resposta do fallback
-  const getFallbackResponse = async (messagesForAPI: any[]) => {
-    try {
-      const fallbackResponse = await fetch("/api/chat/fallback", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages: messagesForAPI,
-        }),
-      })
+  // Função para tentar novamente após um erro
+  const handleRetry = async () => {
+    if (!currentChat || messages.length === 0) return
 
-      if (!fallbackResponse.ok) {
-        throw new Error(`Erro no fallback: ${fallbackResponse.status}`)
-      }
+    // Encontrar a última mensagem do usuário
+    const lastUserMessageIndex = [...messages].reverse().findIndex((msg) => msg.role === "user")
+    if (lastUserMessageIndex === -1) return
 
-      return await fallbackResponse.json()
-    } catch (error) {
-      console.error("❌ Erro ao obter resposta de fallback:", error)
-      return {
-        message:
-          "Desculpe, estou com dificuldades técnicas no momento. Por favor, tente novamente em alguns instantes. 💙",
-        success: false,
-      }
+    const lastUserMessage = [...messages].reverse()[lastUserMessageIndex]
+
+    // Remover a mensagem de erro (última mensagem do assistente)
+    const lastAssistantMessage = messages[messages.length - 1]
+    if (lastAssistantMessage.role === "assistant") {
+      // Remover a última mensagem (erro) do estado local
+      setMessages((prev) => prev.slice(0, -1))
+
+      // Remover a última mensagem (erro) da sessão de chat
+      setChatSessions((prev) =>
+        prev.map((chat) =>
+          chat.id === currentChatId
+            ? {
+                ...chat,
+                messages: chat.messages.slice(0, -1),
+              }
+            : chat,
+        ),
+      )
     }
+
+    // Tentar enviar a mensagem novamente
+    setIsRetrying(true)
+    await handleSendMessage(lastUserMessage.content)
+    setIsRetrying(false)
   }
 
+  // Modificar a função handleSendMessage para incluir melhor tratamento de erros
   const handleSendMessage = async (messageText: string = input) => {
-    if (!messageText.trim() || !currentChat || isLoading) return
+    if (!messageText.trim() || !currentChat || (isLoading && !isRetrying)) return
 
     // Verificar limite de mensagens gratuitas
     if (isFreeLimitReached) {
@@ -309,91 +335,127 @@ Como você gostaria que eu te chamasse?`,
       return
     }
 
-    console.log("📤 Enviando mensagem:", messageText.substring(0, 50) + "...")
+    // Se estiver retentando, não mostrar a mensagem do usuário novamente
+    if (!isRetrying) {
+      console.log("📤 Enviando mensagem:", messageText.substring(0, 50) + "...")
 
-    setIsLoading(true)
-    setInput("")
+      setIsLoading(true)
+      setInput("")
+      setLastMessageError(null)
 
-    // Adicionar mensagem do usuário
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: messageText,
-    }
+      // Adicionar mensagem do usuário
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        role: "user",
+        content: messageText,
+      }
 
-    // Atualizar mensagens locais imediatamente
-    const updatedMessages = [...messages, userMessage]
-    setMessages(updatedMessages)
+      // Atualizar mensagens locais imediatamente
+      const updatedMessages = [...messages, userMessage]
+      setMessages(updatedMessages)
 
-    // Incrementar contador de mensagens
-    const newMessageCount = currentChat.messageCount + 1
+      // Incrementar contador de mensagens
+      const newMessageCount = currentChat.messageCount + 1
 
-    // Atualizar título do chat se for a primeira mensagem do usuário
-    if (currentChat.messages.length === 1) {
-      // Esta é a resposta ao "Como você gostaria que eu te chamasse?"
-      const title = `Conversa com ${messageText}`
+      // Atualizar título do chat se for a primeira mensagem do usuário
+      if (currentChat.messages.length === 1) {
+        // Esta é a resposta ao "Como você gostaria que eu te chamasse?"
+        const title = `Conversa com ${messageText}`
+        setChatSessions((prev) =>
+          prev.map((chat) =>
+            chat.id === currentChatId
+              ? {
+                  ...chat,
+                  title,
+                  lastActivity: new Date().toISOString(),
+                  messageCount: newMessageCount,
+                }
+              : chat,
+          ),
+        )
+      } else {
+        // Apenas incrementar contador
+        setChatSessions((prev) =>
+          prev.map((chat) =>
+            chat.id === currentChatId
+              ? {
+                  ...chat,
+                  lastActivity: new Date().toISOString(),
+                  messageCount: newMessageCount,
+                }
+              : chat,
+          ),
+        )
+      }
+
+      // Atualizar sessão de chat com mensagem do usuário
       setChatSessions((prev) =>
         prev.map((chat) =>
           chat.id === currentChatId
             ? {
                 ...chat,
-                title,
+                messages: [...chat.messages, { ...userMessage }],
                 lastActivity: new Date().toISOString(),
-                messageCount: newMessageCount,
-              }
-            : chat,
-        ),
-      )
-    } else {
-      // Apenas incrementar contador
-      setChatSessions((prev) =>
-        prev.map((chat) =>
-          chat.id === currentChatId
-            ? {
-                ...chat,
-                lastActivity: new Date().toISOString(),
-                messageCount: newMessageCount,
               }
             : chat,
         ),
       )
     }
-
-    // Atualizar sessão de chat com mensagem do usuário
-    setChatSessions((prev) =>
-      prev.map((chat) =>
-        chat.id === currentChatId
-          ? {
-              ...chat,
-              messages: [...chat.messages, { ...userMessage }],
-              lastActivity: new Date().toISOString(),
-            }
-          : chat,
-      ),
-    )
 
     try {
       // Preparar mensagens para envio (excluir system messages)
-      const messagesForAPI = updatedMessages.filter((msg) => msg.role !== "system")
+      const messagesForAPI = messages.filter((msg) => msg.role !== "system")
 
       console.log("🌐 Fazendo requisição para /api/chat...")
       console.log("📤 Enviando mensagens:", messagesForAPI.length)
       console.log("📝 Mensagem do usuário:", messageText)
 
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages: messagesForAPI,
-        }),
-      })
+      // Implementação de retry com backoff exponencial
+      let response = null
+      let retries = 0
+      const maxRetries = 2
 
-      console.log("📡 Status da resposta:", response.status)
+      while (retries <= maxRetries) {
+        try {
+          response = await fetch("/api/chat", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              messages: messagesForAPI,
+            }),
+          })
+
+          // Se a resposta for bem-sucedida ou não for um erro temporário, saia do loop
+          if (response.ok || (response.status !== 429 && response.status !== 503 && response.status !== 504)) {
+            break
+          }
+
+          // Se for um erro de rate limit ou temporário, tente novamente
+          retries++
+          if (retries <= maxRetries) {
+            const waitTime = Math.pow(2, retries) * 1000 // Backoff exponencial: 2s, 4s
+            console.log(`⏳ Tentativa ${retries}/${maxRetries} falhou. Aguardando ${waitTime}ms...`)
+            await sleep(waitTime)
+          }
+        } catch (networkError) {
+          console.error("🌐 Erro de rede:", networkError)
+          retries++
+          if (retries <= maxRetries) {
+            const waitTime = Math.pow(2, retries) * 1000
+            console.log(`⏳ Erro de rede na tentativa ${retries}/${maxRetries}. Aguardando ${waitTime}ms...`)
+            await sleep(waitTime)
+          } else {
+            throw networkError
+          }
+        }
+      }
+
+      console.log("📡 Status da resposta:", response?.status)
 
       // Se houver erro de rate limit, tente usar o fallback
-      if (!response.ok && response.status === 429) {
+      if (response && !response.ok && response.status === 429) {
         console.log("⚠️ Rate limit atingido, usando fallback...")
         const fallbackData = await getFallbackResponse(messagesForAPI)
 
@@ -425,10 +487,10 @@ Como você gostaria que eu te chamasse?`,
         }
       }
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("❌ Erro HTTP:", response.status, errorText)
-        throw new Error(`Erro HTTP: ${response.status}`)
+      if (!response || !response.ok) {
+        const errorText = (await response?.text()) || "Sem resposta do servidor"
+        console.error("❌ Erro HTTP:", response?.status, errorText)
+        throw new Error(`Erro HTTP: ${response?.status || "Sem status"}`)
       }
 
       const responseText = await response.text()
@@ -510,13 +572,14 @@ Como você gostaria que eu te chamasse?`,
       setRetryCount(0)
     } catch (error) {
       console.error("❌ Erro ao enviar mensagem:", error)
+      setLastMessageError(error instanceof Error ? error.message : "Erro desconhecido")
 
       // Se for um erro de rate limit, tente usar o fallback
       if (error instanceof Error && error.message.includes("rate_limit_exceeded")) {
         console.log("⚠️ Rate limit detectado no erro, tentando fallback...")
 
         try {
-          const messagesForAPI = updatedMessages.filter((msg) => msg.role !== "system")
+          const messagesForAPI = messages.filter((msg) => msg.role !== "system")
           const fallbackData = await getFallbackResponse(messagesForAPI)
 
           if (fallbackData && fallbackData.message) {
@@ -570,7 +633,7 @@ Como você gostaria que eu te chamasse?`,
 - Este momento difícil vai passar
 - Estou aqui para te apoiar
 
-Tente enviar sua mensagem novamente em alguns instantes. 💙`,
+**[Tentar novamente]** Clique para tentar enviar sua mensagem novamente.`,
       }
 
       setMessages((prev) => [...prev, errorMessage])
@@ -586,8 +649,40 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
             : chat,
         ),
       )
+
+      // Configurar retry automático após 5 segundos
+      const timeout = setTimeout(() => {
+        console.log("🔄 Tentando novamente automaticamente...")
+        handleRetry()
+      }, 5000)
+
+      setRetryTimeout(timeout)
     } finally {
       setIsLoading(false)
+      setIsRetrying(false)
+    }
+  }
+
+  // Função para obter resposta de fallback
+  const getFallbackResponse = async (messages: Message[]) => {
+    try {
+      console.log("🔄 Tentando fallback...")
+      const response = await fetch("/api/chat/fallback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ messages }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Erro no fallback: ${response.status}`)
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error("❌ Erro no fallback:", error)
+      return null
     }
   }
 
@@ -931,6 +1026,24 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
           </div>
         </div>
       </div>
+
+      {lastMessageError && (
+        <div className="flex items-center justify-center p-4">
+          <Button
+            onClick={handleRetry}
+            disabled={isRetrying}
+            variant="outline"
+            className="border-blue-500 text-blue-500 hover:bg-blue-50 flex items-center gap-2"
+          >
+            {isRetrying ? (
+              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Tentar Novamente
+          </Button>
+        </div>
+      )}
 
       {/* Modal de Pagamento */}
       <PaymentModal

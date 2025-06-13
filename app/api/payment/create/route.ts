@@ -4,18 +4,24 @@ export async function POST(req: Request) {
 
     console.log("💳 Criando pagamento PagSeguro:", { planId, amount, customerName, customerEmail })
 
+    // Validação dos dados de entrada
+    if (!planId || !amount || !customerName || !customerEmail) {
+      return Response.json({ success: false, message: "Dados incompletos para criação do pagamento" }, { status: 400 })
+    }
+
     // Configurações do PagSeguro com suas credenciais
     const pagSeguroConfig = {
       token:
         process.env.PAGSEGURO_TOKEN ||
         "76dc1a75-f2d8-4250-a4a6-1da3e98ef8dfd0183b8241c5a02ad52d43f7f1c02604db6b-1882-4ccd-95b3-6b9929f5bfae",
       email: process.env.PAGSEGURO_EMAIL || "diego.souza44@gmail.com",
-      sandbox: true, // Alterado para true para usar o ambiente de sandbox
+      sandbox: true, // Ambiente de sandbox para testes
     }
 
-    // Dados do pedido
+    // Dados do pedido com referência única
+    const orderReference = `autoajuda-${Date.now()}-${Math.floor(Math.random() * 1000)}`
     const orderData = {
-      reference: `autoajuda-${Date.now()}`,
+      reference: orderReference,
       items: [
         {
           id: planId,
@@ -35,12 +41,14 @@ export async function POST(req: Request) {
       shipping: {
         type: 3, // Sem frete
       },
-      redirectURL: `https://autoajudapro.com/payment/success`,
-      notificationURL: `https://autoajudapro.com/api/payment/webhook`,
+      redirectURL: `${process.env.NEXT_PUBLIC_APP_URL || "https://autoajudapro.com"}/payment/success`,
+      notificationURL: `${process.env.NEXT_PUBLIC_APP_URL || "https://autoajudapro.com"}/api/payment/webhook`,
     }
 
     // URL da API do PagSeguro (sandbox)
-    const apiUrl = "https://ws.sandbox.pagseguro.uol.com.br/v2/checkout"
+    const apiUrl = pagSeguroConfig.sandbox
+      ? "https://ws.sandbox.pagseguro.uol.com.br/v2/checkout"
+      : "https://ws.pagseguro.uol.com.br/v2/checkout"
 
     // Preparar os dados para envio
     const formData = new URLSearchParams()
@@ -64,21 +72,52 @@ export async function POST(req: Request) {
     console.log("📦 Dados do formulário:", Object.fromEntries(formData))
 
     try {
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/xml",
-        },
-        body: formData,
-      })
+      // Implementação de retry para lidar com falhas temporárias
+      const maxRetries = 2
+      let retries = 0
+      let response = null
 
-      console.log("📡 Status da resposta:", response.status)
+      while (retries <= maxRetries) {
+        try {
+          response = await fetch(apiUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded; charset=ISO-8859-1",
+              Accept: "application/xml;charset=ISO-8859-1",
+            },
+            body: formData,
+          })
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("❌ Erro PagSeguro:", response.status, errorText)
-        throw new Error(`Erro PagSeguro: ${response.status} - ${errorText}`)
+          if (response.ok) break
+
+          // Se não for bem-sucedido, mas não for um erro de rede, não tente novamente
+          if (response.status !== 503 && response.status !== 429 && response.status !== 504) break
+
+          retries++
+          if (retries <= maxRetries) {
+            const waitTime = Math.pow(2, retries) * 1000 // Backoff exponencial: 2s, 4s
+            console.log(
+              `⏳ Tentativa ${retries}/${maxRetries} falhou. Aguardando ${waitTime}ms antes de tentar novamente...`,
+            )
+            await new Promise((resolve) => setTimeout(resolve, waitTime))
+          }
+        } catch (networkError) {
+          console.error("🌐 Erro de rede:", networkError)
+          retries++
+          if (retries <= maxRetries) {
+            const waitTime = Math.pow(2, retries) * 1000
+            console.log(`⏳ Erro de rede na tentativa ${retries}/${maxRetries}. Aguardando ${waitTime}ms...`)
+            await new Promise((resolve) => setTimeout(resolve, waitTime))
+          } else {
+            throw networkError
+          }
+        }
+      }
+
+      if (!response || !response.ok) {
+        const errorText = (await response?.text()) || "Sem resposta do servidor"
+        console.error("❌ Erro PagSeguro:", response?.status, errorText)
+        throw new Error(`Erro PagSeguro: ${response?.status || "Sem status"} - ${errorText}`)
       }
 
       const xmlResponse = await response.text()
@@ -91,17 +130,24 @@ export async function POST(req: Request) {
       }
 
       const checkoutCode = codeMatch[1]
-      const checkoutUrl = `https://sandbox.pagseguro.uol.com.br/v2/checkout/payment.html?code=${checkoutCode}`
+      const checkoutUrl = pagSeguroConfig.sandbox
+        ? `https://sandbox.pagseguro.uol.com.br/v2/checkout/payment.html?code=${checkoutCode}`
+        : `https://pagseguro.uol.com.br/v2/checkout/payment.html?code=${checkoutCode}`
 
       console.log("✅ Pagamento criado com sucesso:", {
         code: checkoutCode,
         url: checkoutUrl,
+        reference: orderData.reference,
       })
+
+      // Armazenar informações do pedido para referência futura
+      // Idealmente, isso seria armazenado em um banco de dados
 
       return Response.json({
         success: true,
         paymentCode: checkoutCode,
         paymentUrl: checkoutUrl,
+        reference: orderData.reference,
         status: "WAITING_PAYMENT",
         message: "Pagamento criado com sucesso",
       })
@@ -112,9 +158,11 @@ export async function POST(req: Request) {
       console.log("🧪 Modo de contingência - simulando criação do pagamento")
 
       // Simular resposta do PagSeguro
+      const mockCode = `PAG${Date.now()}`
       const mockResponse = {
-        code: `PAG${Date.now()}`,
-        paymentUrl: `https://sandbox.pagseguro.uol.com.br/v2/checkout/payment.html?code=PAG${Date.now()}`,
+        code: mockCode,
+        paymentUrl: `https://sandbox.pagseguro.uol.com.br/v2/checkout/payment.html?code=${mockCode}`,
+        reference: orderData.reference,
         status: "WAITING_PAYMENT",
       }
 
@@ -122,8 +170,9 @@ export async function POST(req: Request) {
 
       return Response.json({
         success: true,
-        paymentCode: mockResponse.code,
+        paymentCode: mockCode,
         paymentUrl: mockResponse.paymentUrl,
+        reference: orderData.reference,
         status: mockResponse.status,
         message: "Pagamento criado com sucesso (modo de contingência)",
       })
