@@ -39,7 +39,7 @@ export default function ChatInterface({ isOpen, onClose, userName }: ChatInterfa
           <div className="flex items-center gap-2">
             <Bot className="h-6 w-6" />
             <div>
-              <CardTitle className="text-lg">AutoAjuda Pro</CardTitle>
+              <CardTitle className="text-lg">Sofia - IA AutoAjuda</CardTitle>
               {!isMinimized && <p className="text-sm opacity-90">Olá, {userName}! Como posso ajudar?</p>}
             </div>
           </div>
@@ -61,7 +61,8 @@ export default function ChatInterface({ isOpen, onClose, userName }: ChatInterfa
                 <div className="text-center text-gray-500 py-8">
                   <Bot className="h-12 w-12 mx-auto mb-4 text-blue-400" />
                   <p className="text-sm">
-                    Olá! Sou seu assistente de autoajuda. Conte-me o que está acontecendo e como posso ajudá-lo hoje.
+                    Olá! Sou Sofia, sua assistente de IA para autoajuda. Conte-me o que está acontecendo e como posso
+                    ajudá-lo hoje.
                   </p>
                 </div>
               )}

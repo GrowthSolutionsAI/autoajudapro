@@ -34,14 +34,14 @@ export default function PricingSection({ onOpenChat, userData }: PricingSectionP
                 <span className="text-4xl font-bold text-gray-900">R$ 19,90</span>
                 <span className="text-gray-600">/mês</span>
               </div>
-              <p className="text-gray-600 mt-2">Acesso completo com flexibilidade</p>
+              <p className="text-gray-600 mt-2">Acesso completo à IA com flexibilidade</p>
             </CardHeader>
 
             <CardContent className="pt-0">
               <ul className="space-y-3 mb-8">
                 <li className="flex items-center gap-3">
                   <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
-                  <span className="text-gray-700">2 conversas/chats incluídos por mês</span>
+                  <span className="text-gray-700">2 conversas/chats com a IA incluídos por mês</span>
                 </li>
                 <li className="flex items-center gap-3">
                   <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
@@ -49,7 +49,7 @@ export default function PricingSection({ onOpenChat, userData }: PricingSectionP
                 </li>
                 <li className="flex items-center gap-3">
                   <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
-                  <span className="text-gray-700">Acesso a todas as áreas de especialidade</span>
+                  <span className="text-gray-700">Acesso a todas as áreas de especialidade da IA</span>
                 </li>
                 <li className="flex items-center gap-3">
                   <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
@@ -65,7 +65,7 @@ export default function PricingSection({ onOpenChat, userData }: PricingSectionP
                 onClick={onOpenChat}
                 className="w-full rounded-full py-3 font-semibold transition-all duration-300 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white transform hover:scale-105"
               >
-                {userData?.isLoggedIn ? "Acessar Chat" : "Começar Teste Grátis"}
+                {userData?.isLoggedIn ? "Acessar Chat com IA" : "Começar Teste Grátis"}
               </Button>
             </CardContent>
           </Card>

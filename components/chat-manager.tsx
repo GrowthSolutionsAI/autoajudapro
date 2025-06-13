@@ -25,6 +25,7 @@ import {
   Briefcase,
   Menu,
   ChevronLeft,
+  Cpu,
 } from "lucide-react"
 import PaymentModal from "./payment-modal"
 
@@ -63,7 +64,7 @@ export default function ChatManager({ isOpen, onClose, userName }: ChatManagerPr
           role: "assistant",
           content: `Olá ${userName}! 💙
 
-Sou a Sofia, especialista em psicologia positiva e desenvolvimento pessoal. Estou aqui para te apoiar em sua jornada de autoconhecimento e bem-estar.
+Sou a Sofia, sua IA especializada em psicologia positiva e desenvolvimento pessoal. Estou aqui para te apoiar em sua jornada de autoconhecimento e bem-estar.
 
 Este é um espaço seguro onde você pode compartilhar seus sentimentos, desafios e objetivos sem julgamentos.
 
@@ -167,7 +168,7 @@ Para começar, escolha a área em que você gostaria de receber orientação:`,
           role: "assistant",
           content: `Olá ${userName}! 💙
 
-Que bom te ver aqui novamente. Estou pronta para nossa nova conversa.`,
+Que bom te ver aqui novamente. Sou Sofia, sua IA de autoajuda, e estou pronta para nossa nova conversa.`,
         },
       ],
       createdAt: new Date().toISOString(),
@@ -469,7 +470,7 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-2 rounded-lg">
-                  <Heart className="h-5 w-5 text-white" />
+                  <Cpu className="h-5 w-5 text-white" />
                 </div>
                 <span className="font-semibold text-gray-900">Suas Conversas</span>
               </div>
@@ -594,7 +595,7 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
               </div>
               <div className="flex-1 min-w-0">
                 <h1 className="text-lg md:text-xl font-bold text-gray-900 truncate">Sofia</h1>
-                <p className="text-xs md:text-sm text-gray-600 truncate">Especialista em Psicologia Positiva</p>
+                <p className="text-xs md:text-sm text-gray-600 truncate">IA Especialista em Autoajuda</p>
               </div>
 
               {/* Status do usuário - Oculto em telas muito pequenas */}
@@ -614,7 +615,7 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
 
                 <div className="flex items-center gap-2 bg-green-100 px-2 md:px-3 py-1 rounded-full">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-xs md:text-sm text-green-700 font-medium">Online</span>
+                  <span className="text-xs md:text-sm text-green-700 font-medium">IA Online</span>
                 </div>
               </div>
             </div>
@@ -627,7 +628,7 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
                 <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-3 md:p-4 rounded-full w-16 h-16 md:w-20 md:h-20 mx-auto mb-4 md:mb-6 flex items-center justify-center">
                   <Bot className="h-8 w-8 md:h-10 md:w-10 text-white" />
                 </div>
-                <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-3 md:mb-4">Conversa com Sofia 👋</h2>
+                <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-3 md:mb-4">Conversa com Sofia - IA 👋</h2>
                 <p className="text-base md:text-lg text-gray-600 mb-6 md:mb-8 max-w-3xl mx-auto px-4">
                   Sobre o que gostaria de conversar hoje? Escolha um tópico abaixo ou digite sua própria mensagem.
                 </p>
@@ -679,7 +680,7 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
                 >
                   {message.role === "assistant" && (
                     <div className="flex items-center gap-2 mb-2 md:mb-3">
-                      <span className="font-semibold text-blue-600 text-sm md:text-base">Sofia</span>
+                      <span className="font-semibold text-blue-600 text-sm md:text-base">Sofia IA</span>
                       <Heart className="h-3 w-3 md:h-4 md:w-4 text-pink-500" />
                     </div>
                   )}
@@ -703,7 +704,7 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
                 </div>
                 <div className="bg-white/90 backdrop-blur-sm p-4 md:p-6 rounded-2xl shadow-lg border border-blue-100">
                   <div className="flex items-center gap-2 mb-2 md:mb-3">
-                    <span className="font-semibold text-blue-600 text-sm md:text-base">Sofia</span>
+                    <span className="font-semibold text-blue-600 text-sm md:text-base">Sofia IA</span>
                     <Heart className="h-3 w-3 md:h-4 md:w-4 text-pink-500" />
                   </div>
                   <div className="flex items-center gap-2">
@@ -773,17 +774,17 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
                   onClick={() =>
                     handleAreaSelection(
                       "Desenvolvimento Pessoal",
-                      "Quero trabalhar meu desenvolvimento pessoal - autoestima, propósito de vida, habilidades sociais ou produtividade.",
+                      "Quero trabalhar meu desenvolvimento pessoal - autoestima, confiança, hábitos saudáveis ou produtividade.",
                     )
                   }
                   className="h-auto p-4 bg-white hover:bg-blue-50 border-2 border-blue-200 hover:border-blue-400 text-left rounded-xl transition-all duration-200"
                   variant="outline"
                 >
                   <div className="flex items-center gap-3 w-full">
-                    <Target className="h-6 w-6 text-green-500 flex-shrink-0" />
+                    <Target className="h-6 w-6 text-purple-500 flex-shrink-0" />
                     <div>
                       <div className="font-semibold text-gray-900">Desenvolvimento Pessoal</div>
-                      <div className="text-sm text-gray-600">Autoestima, propósito, habilidades</div>
+                      <div className="text-sm text-gray-600">Autoestima, confiança, hábitos</div>
                     </div>
                   </div>
                 </Button>
@@ -791,92 +792,73 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
                 <Button
                   onClick={() =>
                     handleAreaSelection(
-                      "Carreira e Finanças",
-                      "Preciso de orientação sobre carreira e finanças - orientação profissional, gestão de carreira, planejamento financeiro ou empreendedorismo.",
+                      "Carreira",
+                      "Preciso de orientação sobre carreira - decisões profissionais, equilíbrio trabalho-vida, burnout ou mudança de carreira.",
                     )
                   }
                   className="h-auto p-4 bg-white hover:bg-blue-50 border-2 border-blue-200 hover:border-blue-400 text-left rounded-xl transition-all duration-200"
                   variant="outline"
                 >
                   <div className="flex items-center gap-3 w-full">
-                    <Briefcase className="h-6 w-6 text-purple-500 flex-shrink-0" />
+                    <Briefcase className="h-6 w-6 text-yellow-500 flex-shrink-0" />
                     <div>
-                      <div className="font-semibold text-gray-900">Carreira e Finanças</div>
-                      <div className="text-sm text-gray-600">Orientação profissional, planejamento</div>
+                      <div className="font-semibold text-gray-900">Carreira</div>
+                      <div className="text-sm text-gray-600">Decisões profissionais, burnout</div>
                     </div>
                   </div>
                 </Button>
-              </div>
-
-              <div className="text-center mt-4">
-                <p className="text-sm text-gray-500">Ou digite diretamente sua mensagem no campo abaixo</p>
               </div>
             </div>
           )}
 
           {/* Input Area */}
-          <div className="bg-white/80 backdrop-blur-md border-t border-blue-100 p-3 md:p-6">
-            {isFreeLimitReached && (
-              <div className="mb-3 md:mb-4 p-3 md:p-4 bg-gradient-to-r from-blue-100 to-purple-100 border border-blue-200 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <Lock className="h-5 w-5 md:h-6 md:w-6 text-blue-600 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-blue-900 text-sm md:text-base">Limite de mensagens atingido</h4>
-                    <p className="text-xs md:text-sm text-blue-700">
-                      Você usou suas {FREE_MESSAGE_LIMIT} mensagens gratuitas. Assine um plano para continuar!
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => setIsPaymentModalOpen(true)}
-                    className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white text-xs md:text-sm px-3 md:px-4 py-2"
-                  >
-                    Ver Planos
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <form onSubmit={handleFormSubmit} className="flex gap-2 md:gap-4">
-              <div className="flex-1 relative">
-                <Input
-                  value={input}
-                  onChange={handleInputChange}
-                  placeholder={
-                    isFreeLimitReached ? "Assine um plano para continuar..." : "Compartilhe seus sentimentos... 💙"
-                  }
-                  className="w-full py-3 md:py-4 px-4 md:px-6 text-sm md:text-lg rounded-full border-2 border-blue-200 focus:border-blue-500 bg-white/90 backdrop-blur-sm"
-                  disabled={isLoading || isFreeLimitReached}
-                />
-                {input && !isFreeLimitReached && (
-                  <div className="absolute right-3 md:right-4 top-1/2 transform -translate-y-1/2">
-                    <Lightbulb className="h-4 w-4 md:h-5 md:w-5 text-yellow-500" />
-                  </div>
-                )}
-                {isFreeLimitReached && (
-                  <div className="absolute right-3 md:right-4 top-1/2 transform -translate-y-1/2">
-                    <Lock className="h-4 w-4 md:h-5 md:w-5 text-gray-400" />
-                  </div>
-                )}
-              </div>
+          <div className="bg-white/80 backdrop-blur-md border-t border-blue-100 p-3 md:p-4">
+            <form onSubmit={handleFormSubmit} className="flex gap-2 md:gap-3 max-w-4xl mx-auto">
+              <Input
+                value={input}
+                onChange={handleInputChange}
+                placeholder={
+                  isFreeLimitReached
+                    ? "Limite de mensagens gratuitas atingido"
+                    : "Digite sua mensagem para a Sofia IA..."
+                }
+                className="flex-1 rounded-full border-blue-200 focus:border-blue-500 py-6 px-4 md:px-6 text-base"
+                disabled={isLoading || isFreeLimitReached}
+              />
               <Button
                 type="submit"
                 disabled={isLoading || !input.trim() || isFreeLimitReached}
-                className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-full px-4 md:px-8 py-3 md:py-4 text-sm md:text-lg font-semibold transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:transform-none"
+                className={`bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-full p-3 md:p-4 ${
+                  isFreeLimitReached ? "opacity-50 cursor-not-allowed" : ""
+                }`}
               >
-                <Send className="h-4 w-4 md:h-5 md:w-5 mr-1 md:mr-2" />
-                <span className="hidden sm:inline">
-                  {isLoading ? "Enviando..." : isFreeLimitReached ? "Bloqueado" : "Enviar"}
-                </span>
-                <span className="sm:hidden">{isLoading ? "..." : isFreeLimitReached ? "🔒" : "📤"}</span>
+                <Send className="h-5 w-5 md:h-6 md:w-6" />
               </Button>
             </form>
 
-            <div className="flex items-center justify-center mt-3 md:mt-4 gap-2 md:gap-4 text-xs md:text-sm text-gray-500">
-              <span>🧠 GroqCloud + Llama 3</span>
-              <span>•</span>
-              <span>🔒 Confidencial</span>
-              <span className="hidden sm:inline">•</span>
-              <span className="hidden sm:inline">💡 Personalizado</span>
+            {/* Contador de mensagens e aviso */}
+            <div className="flex justify-center items-center mt-2 md:mt-3">
+              {isFreeLimitReached ? (
+                <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
+                  <Lock className="h-3 w-3 md:h-4 md:w-4 text-gray-500" />
+                  <span>
+                    Limite de mensagens gratuitas atingido.{" "}
+                    <button
+                      onClick={() => setIsPaymentModalOpen(true)}
+                      className="text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      Assinar plano
+                    </button>
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
+                  <Lightbulb className="h-3 w-3 md:h-4 md:w-4 text-yellow-500" />
+                  <span>
+                    {remainingFreeMessages} mensagens gratuitas restantes. Suas conversas são privadas e seguras.
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -886,8 +868,7 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
       <PaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
-        onPaymentSuccess={handlePaymentSuccess}
-        userName={userName}
+        onSuccess={handlePaymentSuccess}
       />
     </>
   )

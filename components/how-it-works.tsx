@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card"
-import { CreditCard, MessageSquare, UserCheck } from "lucide-react"
+import { CreditCard, MessageSquare, Cpu } from "lucide-react"
 
 export default function HowItWorks() {
   const steps = [
@@ -11,14 +11,15 @@ export default function HowItWorks() {
     },
     {
       icon: MessageSquare,
-      title: "Acesse o chat",
-      description: "Entre na plataforma e conecte-se instantaneamente com nossa rede de especialistas.",
+      title: "Acesse o chat com sua IA",
+      description: "Entre na plataforma e conecte-se instantaneamente com nossa IA especializada em autoajuda.",
       color: "text-purple-500",
     },
     {
-      icon: UserCheck,
-      title: "Fale com um especialista",
-      description: "Converse com profissionais qualificados e inicie sua jornada de autodesenvolvimento.",
+      icon: Cpu,
+      title: "Receba orientações personalizadas",
+      description:
+        "Converse com nossa IA avançada e inicie sua jornada de autodesenvolvimento com suporte personalizado.",
       color: "text-blue-500",
     },
   ]
@@ -29,7 +30,7 @@ export default function HowItWorks() {
         <div className="text-center mb-16">
           <h2 className="text-4xl font-bold text-gray-900 mb-4">Como funciona o AutoAjuda Pro</h2>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Em apenas 3 passos simples, você estará conectado com especialistas prontos para ajudar
+            Em apenas 3 passos simples, você estará conectado com nossa IA especializada pronta para ajudar
           </p>
         </div>
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { MessageCircle, Users, Star } from "lucide-react"
+import { MessageCircle, Cpu, Star } from "lucide-react"
 
 interface HeroSectionProps {
   onOpenChat: () => void
@@ -14,15 +14,15 @@ export default function HeroSection({ onOpenChat, userData }: HeroSectionProps) 
       <div className="container mx-auto text-center">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-            Fale com especialistas em{" "}
+            Converse com seu{" "}
             <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              autoajuda agora
+              Especialista IA em Autoajuda
             </span>
           </h1>
 
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto leading-relaxed">
-            Conecte-se instantaneamente com profissionais especializados em autoconhecimento, inteligência emocional e
-            desenvolvimento pessoal. Sua jornada de transformação começa aqui.
+            Conecte-se instantaneamente com nossa Inteligência Artificial avançada, especializada em autoconhecimento,
+            inteligência emocional e desenvolvimento pessoal. Sua jornada de transformação começa aqui.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
@@ -31,7 +31,7 @@ export default function HeroSection({ onOpenChat, userData }: HeroSectionProps) 
               onClick={onOpenChat}
               className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-full px-8 py-4 text-lg font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg"
             >
-              {userData?.isLoggedIn ? "Abrir Chat" : "Comece Agora - Grátis"}
+              {userData?.isLoggedIn ? "Abrir Chat com IA" : "Comece Agora - Grátis"}
             </Button>
             <Button
               variant="outline"
@@ -47,12 +47,12 @@ export default function HeroSection({ onOpenChat, userData }: HeroSectionProps) 
             <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-blue-100">
               <MessageCircle className="h-8 w-8 text-blue-500 mx-auto mb-3" />
               <div className="text-2xl font-bold text-gray-900">24/7</div>
-              <div className="text-gray-600">Atendimento disponível</div>
+              <div className="text-gray-600">Disponível a qualquer hora</div>
             </div>
             <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-blue-100">
-              <Users className="h-8 w-8 text-purple-500 mx-auto mb-3" />
-              <div className="text-2xl font-bold text-gray-900">5.000+</div>
-              <div className="text-gray-600">Pessoas ajudadas</div>
+              <Cpu className="h-8 w-8 text-purple-500 mx-auto mb-3" />
+              <div className="text-2xl font-bold text-gray-900">IA Avançada</div>
+              <div className="text-gray-600">Tecnologia de ponta</div>
             </div>
             <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-blue-100">
               <Star className="h-8 w-8 text-yellow-500 mx-auto mb-3" />

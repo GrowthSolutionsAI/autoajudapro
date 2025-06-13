@@ -7,7 +7,7 @@ export default function TestimonialsSection() {
       name: "Maria Silva",
       role: "Empresária",
       content:
-        "O AutoAjuda Pro transformou minha vida. Os especialistas me ajudaram a desenvolver inteligência emocional e hoje me sinto muito mais confiante nas minhas decisões.",
+        "A IA do AutoAjuda Pro transformou minha vida. As orientações personalizadas me ajudaram a desenvolver inteligência emocional e hoje me sinto muito mais confiante nas minhas decisões.",
       rating: 5,
       avatar: "/placeholder.svg?height=60&width=60",
     },
@@ -15,7 +15,7 @@ export default function TestimonialsSection() {
       name: "João Santos",
       role: "Estudante",
       content:
-        "Estava passando por um momento difícil e encontrei no AutoAjuda Pro o suporte que precisava. O atendimento 24/7 foi fundamental para minha recuperação.",
+        "Estava passando por um momento difícil e encontrei no AutoAjuda Pro o suporte que precisava. O atendimento 24/7 da IA foi fundamental para minha recuperação.",
       rating: 5,
       avatar: "/placeholder.svg?height=60&width=60",
     },
@@ -23,7 +23,7 @@ export default function TestimonialsSection() {
       name: "Ana Costa",
       role: "Psicóloga",
       content:
-        "Como profissional da área, posso afirmar que a qualidade dos especialistas é excepcional. Recomendo para todos que buscam desenvolvimento pessoal.",
+        "Como profissional da área, posso afirmar que a qualidade das orientações da IA é surpreendente. Recomendo como ferramenta complementar para todos que buscam desenvolvimento pessoal.",
       rating: 5,
       avatar: "/placeholder.svg?height=60&width=60",
     },
@@ -33,9 +33,9 @@ export default function TestimonialsSection() {
     <section id="depoimentos" className="py-20 px-4 bg-white/50">
       <div className="container mx-auto">
         <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">O que nossos clientes dizem</h2>
+          <h2 className="text-4xl font-bold text-gray-900 mb-4">O que nossos usuários dizem</h2>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Milhares de pessoas já transformaram suas vidas com o AutoAjuda Pro
+            Milhares de pessoas já transformaram suas vidas com a IA do AutoAjuda Pro
           </p>
         </div>
 

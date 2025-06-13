@@ -9,29 +9,29 @@ export default function FAQSection() {
 
   const faqs = [
     {
+      question: "Quem é o 'especialista' com quem vou conversar?",
+      answer:
+        "É uma Inteligência Artificial avançada, desenvolvida especificamente para oferecer orientações em autoajuda, desenvolvimento pessoal e bem-estar emocional. Nossa IA utiliza modelos de linguagem de última geração para fornecer respostas personalizadas e empáticas.",
+    },
+    {
       question: "Como funciona o período de teste gratuito?",
       answer:
         "Oferecemos 7 dias grátis em todos os planos. Você pode cancelar a qualquer momento durante este período sem nenhum custo.",
     },
     {
-      question: "Os especialistas são certificados?",
+      question: "A IA substitui um terapeuta humano?",
       answer:
-        "Sim, todos os nossos especialistas possuem certificações reconhecidas em suas áreas de atuação e passam por um rigoroso processo de seleção.",
+        "Não. Nossa IA é uma ferramenta de apoio e orientação, não um substituto para terapia profissional. Ela pode oferecer insights valiosos e técnicas de autoajuda, mas casos que necessitam de intervenção clínica devem ser tratados por profissionais de saúde mental qualificados.",
     },
     {
-      question: "Posso trocar de plano a qualquer momento?",
+      question: "Como a IA garante a privacidade dos meus dados?",
       answer:
-        "Absolutamente! Você pode fazer upgrade ou downgrade do seu plano a qualquer momento. As mudanças entram em vigor no próximo ciclo de cobrança.",
+        "Levamos a privacidade muito a sério. Todos os dados são criptografados e seguimos rigorosamente a LGPD e outras regulamentações de proteção de dados. Suas conversas são confidenciais e utilizadas apenas para melhorar a qualidade das respostas da IA.",
     },
     {
       question: "O atendimento realmente funciona 24/7?",
       answer:
-        "Sim, nossa plataforma funciona 24 horas por dia, 7 dias por semana. Sempre haverá especialistas disponíveis para atendê-lo.",
-    },
-    {
-      question: "Meus dados estão seguros?",
-      answer:
-        "Levamos a privacidade muito a sério. Todos os dados são criptografados e seguimos rigorosamente a LGPD e outras regulamentações de proteção de dados.",
+        "Sim, nossa IA está disponível 24 horas por dia, 7 dias por semana. Por ser uma solução baseada em inteligência artificial, você pode acessar orientações a qualquer momento, sem limitações de horário.",
     },
     {
       question: "Posso cancelar minha assinatura?",
