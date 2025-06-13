@@ -24,7 +24,8 @@ export default function PricingSection({ onOpenChat, userData }: PricingSectionP
           <Card className="relative bg-white/80 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2 ring-2 ring-blue-500">
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
               <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-1">
-                <Star className="h-4 w-4" />7 Dias Grátis
+                <Star className="h-4 w-4" />
+                Teste Grátis
               </div>
             </div>
 
@@ -73,7 +74,7 @@ export default function PricingSection({ onOpenChat, userData }: PricingSectionP
 
         <div className="text-center mt-12">
           <p className="text-gray-600">
-            Comece com <strong>7 dias grátis</strong> e cancele a qualquer momento sem compromisso
+            Comece com <strong>teste grátis</strong> e cancele a qualquer momento sem compromisso
           </p>
           <p className="text-gray-600 mt-2">Pague apenas pelos chats adicionais que realmente precisar</p>
         </div>
