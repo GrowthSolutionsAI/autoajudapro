@@ -16,11 +16,11 @@ export async function GET(req: Request) {
         process.env.PAGSEGURO_TOKEN ||
         "76dc1a75-f2d8-4250-a4a6-1da3e98ef8dfd0183b8241c5a02ad52d43f7f1c02604db6b-1882-4ccd-95b3-6b9929f5bfae",
       email: process.env.PAGSEGURO_EMAIL || "diego.souza44@gmail.com",
-      sandbox: false, // Ambiente de produção
+      sandbox: true, // Alterado para true para usar o ambiente de sandbox
     }
 
     // Consultar a API do PagSeguro
-    const apiUrl = `https://ws.pagseguro.uol.com.br/v2/transactions/by/reference`
+    const apiUrl = `https://ws.sandbox.pagseguro.uol.com.br/v2/transactions/by/reference`
 
     const apiUrlWithParams = new URL(apiUrl)
     apiUrlWithParams.searchParams.append("email", pagSeguroConfig.email)

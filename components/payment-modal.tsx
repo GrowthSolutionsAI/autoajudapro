@@ -92,7 +92,10 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
         }),
       })
 
+      console.log("📡 Status da resposta:", response.status)
+
       const data = await response.json()
+      console.log("📦 Dados da resposta:", data)
 
       if (!response.ok) {
         throw new Error(data.message || "Erro ao criar pagamento")
@@ -108,6 +111,8 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
       // Armazenar a URL e o código do pagamento
       setPaymentUrl(data.paymentUrl)
       setPaymentCode(data.paymentCode)
+
+      console.log("🔗 Abrindo URL de pagamento:", data.paymentUrl)
 
       // Abrir em nova aba
       window.open(data.paymentUrl, "_blank")
@@ -286,15 +291,29 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
               </div>
               <h3 className="text-xl font-bold text-red-900 mb-2">Erro no Pagamento</h3>
               <p className="text-red-700 mb-4">{errorMessage}</p>
-              <Button
-                onClick={() => {
-                  setPaymentStatus("idle")
-                  setErrorMessage("")
-                }}
-                className="bg-blue-500 hover:bg-blue-600 text-white"
-              >
-                Tentar Novamente
-              </Button>
+              <div className="space-y-3">
+                <Button
+                  onClick={() => {
+                    setPaymentStatus("idle")
+                    setErrorMessage("")
+                  }}
+                  className="bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  Tentar Novamente
+                </Button>
+                {paymentUrl && (
+                  <div>
+                    <p className="text-sm text-gray-600 mt-3 mb-2">Ou tente abrir a página de pagamento diretamente:</p>
+                    <Button
+                      onClick={() => window.open(paymentUrl, "_blank")}
+                      variant="outline"
+                      className="border-blue-500 text-blue-500 hover:bg-blue-50"
+                    >
+                      Abrir Página de Pagamento
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </CardContent>

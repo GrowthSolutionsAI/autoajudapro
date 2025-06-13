@@ -10,7 +10,7 @@ export async function POST(req: Request) {
         process.env.PAGSEGURO_TOKEN ||
         "76dc1a75-f2d8-4250-a4a6-1da3e98ef8dfd0183b8241c5a02ad52d43f7f1c02604db6b-1882-4ccd-95b3-6b9929f5bfae",
       email: process.env.PAGSEGURO_EMAIL || "diego.souza44@gmail.com",
-      sandbox: false, // Ambiente de produção
+      sandbox: true, // Alterado para true para usar o ambiente de sandbox
     }
 
     // Dados do pedido
@@ -39,8 +39,8 @@ export async function POST(req: Request) {
       notificationURL: `https://autoajudapro.com/api/payment/webhook`,
     }
 
-    // URL da API do PagSeguro (produção)
-    const apiUrl = "https://ws.pagseguro.uol.com.br/v2/checkout"
+    // URL da API do PagSeguro (sandbox)
+    const apiUrl = "https://ws.sandbox.pagseguro.uol.com.br/v2/checkout"
 
     // Preparar os dados para envio
     const formData = new URLSearchParams()
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
       }
 
       const checkoutCode = codeMatch[1]
-      const checkoutUrl = `https://pagseguro.uol.com.br/v2/checkout/payment.html?code=${checkoutCode}`
+      const checkoutUrl = `https://sandbox.pagseguro.uol.com.br/v2/checkout/payment.html?code=${checkoutCode}`
 
       console.log("✅ Pagamento criado com sucesso:", {
         code: checkoutCode,
