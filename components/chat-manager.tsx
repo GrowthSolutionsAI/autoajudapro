@@ -85,6 +85,7 @@ Como você gostaria que eu te chamasse?`,
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [showAreaButtons, setShowAreaButtons] = useState(false)
   const [showAreaOptions, setShowAreaOptions] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
 
   const currentChat = chatSessions.find((chat) => chat.id === currentChatId)
   const userMessageCount = currentChat?.messageCount || 0
@@ -271,6 +272,34 @@ Como você gostaria que eu te chamasse?`,
     handleSendMessage(message)
   }
 
+  // Função para tentar obter resposta do fallback
+  const getFallbackResponse = async (messagesForAPI: any[]) => {
+    try {
+      const fallbackResponse = await fetch("/api/chat/fallback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: messagesForAPI,
+        }),
+      })
+
+      if (!fallbackResponse.ok) {
+        throw new Error(`Erro no fallback: ${fallbackResponse.status}`)
+      }
+
+      return await fallbackResponse.json()
+    } catch (error) {
+      console.error("❌ Erro ao obter resposta de fallback:", error)
+      return {
+        message:
+          "Desculpe, estou com dificuldades técnicas no momento. Por favor, tente novamente em alguns instantes. 💙",
+        success: false,
+      }
+    }
+  }
+
   const handleSendMessage = async (messageText: string = input) => {
     if (!messageText.trim() || !currentChat || isLoading) return
 
@@ -363,6 +392,39 @@ Como você gostaria que eu te chamasse?`,
 
       console.log("📡 Status da resposta:", response.status)
 
+      // Se houver erro de rate limit, tente usar o fallback
+      if (!response.ok && response.status === 429) {
+        console.log("⚠️ Rate limit atingido, usando fallback...")
+        const fallbackData = await getFallbackResponse(messagesForAPI)
+
+        if (fallbackData && fallbackData.message) {
+          const assistantMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: fallbackData.message,
+          }
+
+          // Atualizar mensagens com resposta de fallback
+          setMessages((prev) => [...prev, assistantMessage])
+
+          // Atualizar sessão de chat com resposta de fallback
+          setChatSessions((prev) =>
+            prev.map((chat) =>
+              chat.id === currentChatId
+                ? {
+                    ...chat,
+                    messages: [...chat.messages, { ...assistantMessage }],
+                    lastActivity: new Date().toISOString(),
+                  }
+                : chat,
+            ),
+          )
+
+          setIsLoading(false)
+          return
+        }
+      }
+
       if (!response.ok) {
         const errorText = await response.text()
         console.error("❌ Erro HTTP:", response.status, errorText)
@@ -444,8 +506,49 @@ Como você gostaria que eu te chamasse?`,
       }
 
       console.log("✅ Mensagem processada e exibida com sucesso")
+      // Resetar contador de tentativas após sucesso
+      setRetryCount(0)
     } catch (error) {
       console.error("❌ Erro ao enviar mensagem:", error)
+
+      // Se for um erro de rate limit, tente usar o fallback
+      if (error instanceof Error && error.message.includes("rate_limit_exceeded")) {
+        console.log("⚠️ Rate limit detectado no erro, tentando fallback...")
+
+        try {
+          const messagesForAPI = updatedMessages.filter((msg) => msg.role !== "system")
+          const fallbackData = await getFallbackResponse(messagesForAPI)
+
+          if (fallbackData && fallbackData.message) {
+            const assistantMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              role: "assistant",
+              content: fallbackData.message,
+            }
+
+            // Atualizar mensagens com resposta de fallback
+            setMessages((prev) => [...prev, assistantMessage])
+
+            // Atualizar sessão de chat com resposta de fallback
+            setChatSessions((prev) =>
+              prev.map((chat) =>
+                chat.id === currentChatId
+                  ? {
+                      ...chat,
+                      messages: [...chat.messages, { ...assistantMessage }],
+                      lastActivity: new Date().toISOString(),
+                    }
+                  : chat,
+              ),
+            )
+
+            setIsLoading(false)
+            return
+          }
+        } catch (fallbackError) {
+          console.error("❌ Erro ao usar fallback:", fallbackError)
+        }
+      }
 
       // Mensagem de erro para o usuário
       const errorMessage: Message = {

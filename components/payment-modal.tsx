@@ -88,7 +88,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
           planId: "mensal",
           amount: planPrice,
           customerName: userName || "Cliente AutoAjuda Pro",
-          customerEmail: "cliente@exemplo.com", // Em produção, usar email real do usuário
+          customerEmail: "c48318933288142578980@sandbox.pagseguro.com.br", // Email de comprador de teste do PagSeguro
         }),
       })
 

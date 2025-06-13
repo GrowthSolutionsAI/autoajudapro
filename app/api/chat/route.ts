@@ -1,5 +1,58 @@
 import type { NextRequest } from "next/server"
 
+// Função de espera (sleep)
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// Função para fazer requisição com retry
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3, initialBackoff = 1000) {
+  let retries = 0
+  let backoff = initialBackoff
+
+  while (retries <= maxRetries) {
+    try {
+      const response = await fetch(url, options)
+
+      // Se a resposta for bem-sucedida, retorne-a
+      if (response.ok) {
+        return response
+      }
+
+      // Se for um erro de rate limit, tente novamente após o backoff
+      const responseText = await response.text()
+
+      if (responseText.includes("rate_limit_exceeded")) {
+        console.log(`⚠️ Rate limit atingido. Tentativa ${retries + 1}/${maxRetries + 1}. Aguardando ${backoff}ms...`)
+
+        // Extrair o tempo de espera sugerido, se disponível
+        let waitTime = backoff
+        const waitTimeMatch = responseText.match(/Please try again in (\d+)ms/)
+        if (waitTimeMatch && waitTimeMatch[1]) {
+          waitTime = Math.max(Number.parseInt(waitTimeMatch[1]), backoff)
+          console.log(`🕒 Tempo de espera sugerido pela API: ${waitTime}ms`)
+        }
+
+        await sleep(waitTime)
+        retries++
+        backoff *= 2 // Backoff exponencial
+        continue
+      }
+
+      // Se for outro tipo de erro, lance uma exceção
+      throw new Error(`GroqCloud falhou: ${response.status} - ${responseText}`)
+    } catch (error) {
+      if (retries >= maxRetries) {
+        throw error
+      }
+      console.log(`❌ Erro na tentativa ${retries + 1}/${maxRetries + 1}. Tentando novamente em ${backoff}ms...`)
+      await sleep(backoff)
+      retries++
+      backoff *= 2 // Backoff exponencial
+    }
+  }
+
+  throw new Error(`Falha após ${maxRetries} tentativas`)
+}
+
 export async function POST(req: NextRequest) {
   try {
     console.log("🚀 Iniciando chat com GroqCloud...")
@@ -107,11 +160,11 @@ Termine sempre com uma pergunta que incentive a continuidade do diálogo.`,
     console.log("🤖 Enviando para GroqCloud...")
     console.log("📋 Mensagens formatadas:", groqMessages.length)
 
-    // Fazer requisição para GroqCloud
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    // Configurar a requisição para o GroqCloud
+    const requestOptions = {
       method: "POST",
       headers: {
-        Authorization: `Bearer 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`,
+        Authorization: `Bearer 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`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -121,15 +174,17 @@ Termine sempre com uma pergunta que incentive a continuidade do diálogo.`,
         max_tokens: 1000,
         stream: false,
       }),
-    })
+    }
+
+    // Fazer requisição para GroqCloud com retry
+    const response = await fetchWithRetry(
+      "https://api.groq.com/openai/v1/chat/completions",
+      requestOptions,
+      3, // máximo de 3 retentativas
+      1000, // backoff inicial de 1 segundo
+    )
 
     console.log("📡 Status GroqCloud:", response.status)
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error("❌ Erro GroqCloud:", errorText)
-      throw new Error(`GroqCloud falhou: ${response.status} - ${errorText}`)
-    }
 
     const responseText = await response.text()
     console.log("📄 Resposta bruta (primeiros 500 chars):", responseText.substring(0, 500))

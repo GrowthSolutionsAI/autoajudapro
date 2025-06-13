@@ -20,7 +20,7 @@ export async function POST(req: Request) {
         {
           id: planId,
           description: "Auto Ajuda Pro Mensal - Acesso ilimitado à Sofia por 30 dias",
-          amount: (amount * 100).toString(), // PagSeguro usa centavos
+          amount: amount.toFixed(2), // PagSeguro usa formato decimal com 2 casas
           quantity: "1",
         },
       ],
@@ -54,7 +54,8 @@ export async function POST(req: Request) {
     formData.append("itemQuantity1", orderData.items[0].quantity)
     formData.append("senderName", orderData.customer.name)
     formData.append("senderEmail", orderData.customer.email)
-    formData.append("senderPhone", `${orderData.customer.phone.areaCode}${orderData.customer.phone.number}`)
+    formData.append("senderAreaCode", orderData.customer.phone.areaCode)
+    formData.append("senderPhone", orderData.customer.phone.number)
     formData.append("shippingType", orderData.shipping.type.toString())
     formData.append("redirectURL", orderData.redirectURL)
     formData.append("notificationURL", orderData.notificationURL)
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/xml",
         },
         body: formData,
       })
@@ -112,7 +114,7 @@ export async function POST(req: Request) {
       // Simular resposta do PagSeguro
       const mockResponse = {
         code: `PAG${Date.now()}`,
-        paymentUrl: `https://pagseguro.uol.com.br/v2/checkout/payment.html?code=PAG${Date.now()}`,
+        paymentUrl: `https://sandbox.pagseguro.uol.com.br/v2/checkout/payment.html?code=PAG${Date.now()}`,
         status: "WAITING_PAYMENT",
       }
 
