@@ -335,6 +335,9 @@ Como você gostaria que eu te chamasse?`,
       return
     }
 
+    // Definir newMessageCount no início da função
+    const newMessageCount = currentChat.messageCount + 1
+
     // Se estiver retentando, não mostrar a mensagem do usuário novamente
     if (!isRetrying) {
       console.log("📤 Enviando mensagem:", messageText.substring(0, 50) + "...")
@@ -353,9 +356,6 @@ Como você gostaria que eu te chamasse?`,
       // Atualizar mensagens locais imediatamente
       const updatedMessages = [...messages, userMessage]
       setMessages(updatedMessages)
-
-      // Incrementar contador de mensagens
-      const newMessageCount = currentChat.messageCount + 1
 
       // Atualizar título do chat se for a primeira mensagem do usuário
       if (currentChat.messages.length === 1) {
@@ -404,7 +404,9 @@ Como você gostaria que eu te chamasse?`,
 
     try {
       // Preparar mensagens para envio (excluir system messages)
-      const messagesForAPI = messages.filter((msg) => msg.role !== "system")
+      const messagesForAPI = isRetrying
+        ? messages.filter((msg) => msg.role !== "system")
+        : [...messages, { role: "user", content: messageText }].filter((msg) => msg.role !== "system")
 
       console.log("🌐 Fazendo requisição para /api/chat...")
       console.log("📤 Enviando mensagens:", messagesForAPI.length)
