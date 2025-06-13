@@ -62,15 +62,11 @@ export default function ChatManager({ isOpen, onClose, userName }: ChatManagerPr
         {
           id: "welcome",
           role: "assistant",
-          content: `Olá ${userName}! 💙
+          content: `Olá! 💙
 
 Sou a Sofia, sua IA especializada em psicologia positiva e desenvolvimento pessoal. Estou aqui para te apoiar em sua jornada de autoconhecimento e bem-estar.
 
-Este é um espaço seguro onde você pode compartilhar seus sentimentos, desafios e objetivos sem julgamentos.
-
-**✨ Você tem ${FREE_MESSAGE_LIMIT} mensagens gratuitas para testar nossa IA avançada!**
-
-Para começar, escolha a área em que você gostaria de receber orientação:`,
+Como você gostaria que eu te chamasse?`,
         },
       ],
       createdAt: new Date().toISOString(),
@@ -81,14 +77,14 @@ Para começar, escolha a área em que você gostaria de receber orientação:`,
   ])
 
   const [currentChatId, setCurrentChatId] = useState("1")
-  const [showSuggestions, setShowSuggestions] = useState(true)
+  const [showSuggestions, setShowSuggestions] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Para controle mobile
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [showAreaButtons, setShowAreaButtons] = useState(true)
+  const [showAreaButtons, setShowAreaButtons] = useState(false)
 
   const currentChat = chatSessions.find((chat) => chat.id === currentChatId)
   const userMessageCount = currentChat?.messageCount || 0
@@ -115,6 +111,10 @@ Para começar, escolha a área em que você gostaria de receber orientação:`,
       )
       // Resetar botões de área se for uma nova conversa
       if (currentChat.messages.length === 1) {
+        setShowAreaButtons(false)
+        setShowSuggestions(false)
+      } else if (currentChat.messages.length === 3) {
+        // Após o usuário fornecer seu nome e a IA responder, mostrar os botões de área
         setShowAreaButtons(true)
         setShowSuggestions(true)
       } else {
@@ -166,9 +166,11 @@ Para começar, escolha a área em que você gostaria de receber orientação:`,
         {
           id: "welcome-" + newChatId,
           role: "assistant",
-          content: `Olá ${userName}! 💙
+          content: `Olá! 💙
 
-Que bom te ver aqui novamente. Sou Sofia, sua IA de autoajuda, e estou pronta para nossa nova conversa.`,
+Sou a Sofia, sua IA especializada em psicologia positiva e desenvolvimento pessoal. Estou aqui para te apoiar em sua jornada de autoconhecimento e bem-estar.
+
+Como você gostaria que eu te chamasse?`,
         },
       ],
       createdAt: new Date().toISOString(),
@@ -179,7 +181,8 @@ Que bom te ver aqui novamente. Sou Sofia, sua IA de autoajuda, e estou pronta pa
 
     setChatSessions((prev) => [...prev, newChat])
     setCurrentChatId(newChatId)
-    setShowSuggestions(true)
+    setShowSuggestions(false)
+    setShowAreaButtons(false)
     setIsSidebarOpen(false) // Fechar sidebar no mobile após criar novo chat
   }
 
@@ -248,7 +251,8 @@ Que bom te ver aqui novamente. Sou Sofia, sua IA de autoajuda, e estou pronta pa
 
     // Atualizar título do chat se for a primeira mensagem do usuário
     if (currentChat.messages.length === 1) {
-      const title = messageText.length > 30 ? messageText.substring(0, 30) + "..." : messageText
+      // Esta é a resposta ao "Como você gostaria que eu te chamasse?"
+      const title = `Conversa com ${messageText}`
       setChatSessions((prev) =>
         prev.map((chat) =>
           chat.id === currentChatId
@@ -397,7 +401,7 @@ Que bom te ver aqui novamente. Sou Sofia, sua IA de autoajuda, e estou pronta pa
       const errorMessage: Message = {
         id: (Date.now() + 2).toString(),
         role: "assistant",
-        content: `Desculpe, ${userName}. Estou com dificuldades técnicas no momento. 😔
+        content: `Desculpe, estou com dificuldades técnicas no momento. 😔
 
 **Detalhes do erro:** ${error instanceof Error ? error.message : "Erro desconhecido"}
 
@@ -623,14 +627,25 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
 
           {/* Messages Area */}
           <div className="flex-1 overflow-y-auto p-3 md:p-6">
-            {currentChat && currentChat.messages.length <= 1 && showSuggestions && (
+            {currentChat && currentChat.messages.length <= 1 && (
               <div className="text-center py-8 md:py-12">
                 <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-3 md:p-4 rounded-full w-16 h-16 md:w-20 md:h-20 mx-auto mb-4 md:mb-6 flex items-center justify-center">
                   <Bot className="h-8 w-8 md:h-10 md:w-10 text-white" />
                 </div>
                 <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-3 md:mb-4">Conversa com Sofia - IA 👋</h2>
                 <p className="text-base md:text-lg text-gray-600 mb-6 md:mb-8 max-w-3xl mx-auto px-4">
-                  Sobre o que gostaria de conversar hoje? Escolha um tópico abaixo ou digite sua própria mensagem.
+                  Estou aqui para te ajudar em sua jornada de autoconhecimento e bem-estar.
+                </p>
+              </div>
+            )}
+
+            {showAreaButtons && currentChat && currentChat.messages.length === 3 && showSuggestions && (
+              <div className="text-center py-4 md:py-6">
+                <h3 className="text-lg md:text-xl font-semibold text-gray-900 mb-3 md:mb-4">
+                  Sobre o que gostaria de conversar hoje?
+                </h3>
+                <p className="text-sm md:text-base text-gray-600 mb-4 md:mb-6 max-w-3xl mx-auto px-4">
+                  Escolha um tópico abaixo ou digite sua própria mensagem.
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 max-w-5xl mx-auto px-4">
@@ -728,8 +743,8 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Botões de Área - Mostrar apenas no início */}
-          {showAreaButtons && currentChat && currentChat.messages.length === 1 && (
+          {/* Botões de Área - Mostrar apenas após o usuário fornecer seu nome */}
+          {showAreaButtons && currentChat && currentChat.messages.length === 3 && (
             <div className="p-3 md:p-6 border-t border-blue-100">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl mx-auto">
                 <Button
@@ -820,7 +835,9 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
                 placeholder={
                   isFreeLimitReached
                     ? "Limite de mensagens gratuitas atingido"
-                    : "Digite sua mensagem para a Sofia IA..."
+                    : currentChat?.messages.length === 1
+                      ? "Digite seu nome..."
+                      : "Digite sua mensagem para a Sofia IA..."
                 }
                 className="flex-1 rounded-full border-blue-200 focus:border-blue-500 py-6 px-4 md:px-6 text-base"
                 disabled={isLoading || isFreeLimitReached}
