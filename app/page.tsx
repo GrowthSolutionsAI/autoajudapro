@@ -40,7 +40,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <Header userData={userData} onLogout={handleLogout} />
+      <Header userData={userData} onLogout={handleLogout} onLoginSuccess={handleLoginSuccess} />
       <main>
         <HeroSection onOpenChat={handleOpenChat} userData={userData} />
         <AreasSection />

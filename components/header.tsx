@@ -8,9 +8,10 @@ import LoginModal from "./login-modal"
 interface HeaderProps {
   userData?: any
   onLogout?: () => void
+  onLoginSuccess?: (data: any) => void
 }
 
-export default function Header({ userData, onLogout }: HeaderProps) {
+export default function Header({ userData, onLogout, onLoginSuccess }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false)
 
@@ -24,11 +25,11 @@ export default function Header({ userData, onLogout }: HeaderProps) {
   ]
 
   const handleLoginSuccess = (data: any) => {
-    // Esta função será passada do componente pai
-    if (onLogout) {
-      // Simular login bem-sucedido
-      console.log("Login realizado:", data)
+    // Passar os dados do usuário para o componente pai
+    if (onLoginSuccess) {
+      onLoginSuccess(data)
     }
+    setIsLoginModalOpen(false)
   }
 
   return (
