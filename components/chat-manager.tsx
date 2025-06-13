@@ -727,14 +727,16 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
                   <Button
                     key={area.id}
                     variant="outline"
-                    className="flex items-center justify-start gap-3 p-4 h-auto text-left bg-white hover:bg-blue-50 border-2 border-blue-200 hover:border-blue-400 rounded-xl transition-all duration-200"
+                    className="flex items-start h-auto text-left bg-white hover:bg-blue-50 border-2 border-blue-200 hover:border-blue-400 rounded-xl transition-all duration-200 p-0 overflow-hidden"
                     onClick={() => handleAreaSelection(area.title)}
                     disabled={isLoading}
                   >
-                    <div className="flex-shrink-0">{area.icon}</div>
-                    <div className="flex-1 min-w-0 overflow-hidden">
-                      <div className="font-medium text-gray-900 truncate">{area.title}</div>
-                      <div className="text-xs text-gray-600 line-clamp-2 overflow-ellipsis">{area.description}</div>
+                    <div className="flex p-4 w-full">
+                      <div className="flex-shrink-0 mr-3 mt-1">{area.icon}</div>
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900 mb-1">{area.title}</div>
+                        <div className="text-xs text-gray-600 break-words">{area.description}</div>
+                      </div>
                     </div>
                   </Button>
                 ))}

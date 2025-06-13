@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { X, CreditCard, Shield, Clock, CheckCircle, AlertCircle } from "lucide-react"
@@ -16,13 +16,64 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success" | "error">("idle")
   const [errorMessage, setErrorMessage] = useState("")
+  const [paymentUrl, setPaymentUrl] = useState("")
+  const [paymentCode, setPaymentCode] = useState("")
+  const [checkStatusInterval, setCheckStatusInterval] = useState<NodeJS.Timeout | null>(null)
 
   const planPrice = 19.9
+
+  // Limpar o intervalo quando o componente for desmontado
+  useEffect(() => {
+    return () => {
+      if (checkStatusInterval) {
+        clearInterval(checkStatusInterval)
+      }
+    }
+  }, [checkStatusInterval])
+
+  // Verificar o status do pagamento periodicamente
+  const startCheckingPaymentStatus = (code: string) => {
+    // Limpar qualquer intervalo existente
+    if (checkStatusInterval) {
+      clearInterval(checkStatusInterval)
+    }
+
+    // Configurar um novo intervalo para verificar o status a cada 5 segundos
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/payment/status?code=${code}`)
+        const data = await response.json()
+
+        console.log("📊 Status do pagamento:", data)
+
+        if (data.success && (data.status === "PAID" || data.status === "AVAILABLE")) {
+          // Pagamento aprovado
+          clearInterval(interval)
+          setPaymentStatus("success")
+          setTimeout(() => {
+            onPaymentSuccess()
+            onClose()
+          }, 2000)
+        } else if (data.success && data.status === "CANCELLED") {
+          // Pagamento cancelado
+          clearInterval(interval)
+          setPaymentStatus("error")
+          setErrorMessage("Pagamento cancelado pelo usuário ou expirado")
+        }
+      } catch (error) {
+        console.error("❌ Erro ao verificar status do pagamento:", error)
+      }
+    }, 5000) // Verificar a cada 5 segundos
+
+    setCheckStatusInterval(interval)
+  }
 
   const handlePayment = async () => {
     setIsProcessing(true)
     setPaymentStatus("processing")
     setErrorMessage("")
+    setPaymentUrl("")
+    setPaymentCode("")
 
     try {
       console.log("🔄 Iniciando processo de pagamento...")
@@ -36,8 +87,8 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
         body: JSON.stringify({
           planId: "mensal",
           amount: planPrice,
-          customerName: userName,
-          customerEmail: "demo@autoajuda.com", // Em produção, usar email real
+          customerName: userName || "Cliente AutoAjuda Pro",
+          customerEmail: "cliente@exemplo.com", // Em produção, usar email real do usuário
         }),
       })
 
@@ -49,22 +100,20 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
 
       console.log("✅ Pedido criado:", data)
 
-      // Redirecionar para o PagSeguro
-      if (data.paymentUrl) {
-        // Abrir em nova aba
-        window.open(data.paymentUrl, "_blank")
-
-        // Simular sucesso após alguns segundos (em produção, usar webhook)
-        setTimeout(() => {
-          setPaymentStatus("success")
-          setTimeout(() => {
-            onPaymentSuccess()
-            onClose()
-          }, 2000)
-        }, 3000)
-      } else {
+      // Verificar se recebemos a URL de pagamento
+      if (!data.paymentUrl) {
         throw new Error("URL de pagamento não recebida")
       }
+
+      // Armazenar a URL e o código do pagamento
+      setPaymentUrl(data.paymentUrl)
+      setPaymentCode(data.paymentCode)
+
+      // Abrir em nova aba
+      window.open(data.paymentUrl, "_blank")
+
+      // Iniciar verificação periódica do status do pagamento
+      startCheckingPaymentStatus(data.paymentCode)
     } catch (error) {
       console.error("❌ Erro no pagamento:", error)
       setPaymentStatus("error")
@@ -74,6 +123,18 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
     }
   }
 
+  // Resetar o estado quando o modal é fechado
+  const handleClose = () => {
+    if (checkStatusInterval) {
+      clearInterval(checkStatusInterval)
+    }
+    setPaymentStatus("idle")
+    setErrorMessage("")
+    setPaymentUrl("")
+    setPaymentCode("")
+    onClose()
+  }
+
   if (!isOpen) return null
 
   return (
@@ -81,7 +142,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
       <Card className="w-full max-w-md bg-white/95 backdrop-blur-sm border-0 shadow-2xl max-h-[90vh] overflow-y-auto">
         <CardHeader className="relative">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="absolute right-4 top-4 p-2 hover:bg-gray-100 rounded-full transition-colors"
           >
             <X className="h-5 w-5" />
@@ -192,6 +253,18 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
                 Você foi redirecionado para o PagSeguro. Complete o pagamento na nova aba.
               </p>
               <p className="text-sm text-gray-500 mt-2">Aguardando confirmação do pagamento...</p>
+
+              {paymentUrl && (
+                <div className="mt-4">
+                  <p className="text-sm text-gray-600 mb-2">Se a página de pagamento não abriu automaticamente:</p>
+                  <Button
+                    onClick={() => window.open(paymentUrl, "_blank")}
+                    className="bg-blue-500 hover:bg-blue-600 text-white"
+                  >
+                    Abrir Página de Pagamento
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 

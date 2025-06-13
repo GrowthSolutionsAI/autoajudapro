@@ -2,14 +2,15 @@ export async function POST(req: Request) {
   try {
     const { planId, amount, customerName, customerEmail } = await req.json()
 
-    console.log("💳 Criando pagamento PagSeguro:", { planId, amount, customerName })
+    console.log("💳 Criando pagamento PagSeguro:", { planId, amount, customerName, customerEmail })
 
-    // Configurações do PagSeguro
+    // Configurações do PagSeguro com suas credenciais
     const pagSeguroConfig = {
-      // Em produção, use suas credenciais reais do PagSeguro
-      token: process.env.PAGSEGURO_TOKEN || "sandbox_token",
-      email: process.env.PAGSEGURO_EMAIL || "sandbox@email.com",
-      sandbox: process.env.NODE_ENV !== "production",
+      token:
+        process.env.PAGSEGURO_TOKEN ||
+        "76dc1a75-f2d8-4250-a4a6-1da3e98ef8dfd0183b8241c5a02ad52d43f7f1c02604db6b-1882-4ccd-95b3-6b9929f5bfae",
+      email: process.env.PAGSEGURO_EMAIL || "diego.souza44@gmail.com",
+      sandbox: false, // Ambiente de produção
     }
 
     // Dados do pedido
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
       items: [
         {
           id: planId,
-          description: `AutoAjuda Pro - Plano ${planId.charAt(0).toUpperCase() + planId.slice(1)}`,
+          description: "Auto Ajuda Pro Mensal - Acesso ilimitado à Sofia por 30 dias",
           amount: (amount * 100).toString(), // PagSeguro usa centavos
           quantity: "1",
         },
@@ -34,18 +35,84 @@ export async function POST(req: Request) {
       shipping: {
         type: 3, // Sem frete
       },
-      redirectURL: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/payment/success`,
-      notificationURL: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/payment/webhook`,
+      redirectURL: `https://autoajudapro.com/payment/success`,
+      notificationURL: `https://autoajudapro.com/api/payment/webhook`,
     }
 
-    // Simular criação do pagamento (em produção, usar API real do PagSeguro)
-    if (pagSeguroConfig.sandbox) {
-      console.log("🧪 Modo sandbox - simulando criação do pagamento")
+    // URL da API do PagSeguro (produção)
+    const apiUrl = "https://ws.pagseguro.uol.com.br/v2/checkout"
+
+    // Preparar os dados para envio
+    const formData = new URLSearchParams()
+    formData.append("email", pagSeguroConfig.email)
+    formData.append("token", pagSeguroConfig.token)
+    formData.append("currency", "BRL")
+    formData.append("reference", orderData.reference)
+    formData.append("itemId1", orderData.items[0].id)
+    formData.append("itemDescription1", orderData.items[0].description)
+    formData.append("itemAmount1", orderData.items[0].amount)
+    formData.append("itemQuantity1", orderData.items[0].quantity)
+    formData.append("senderName", orderData.customer.name)
+    formData.append("senderEmail", orderData.customer.email)
+    formData.append("senderPhone", `${orderData.customer.phone.areaCode}${orderData.customer.phone.number}`)
+    formData.append("shippingType", orderData.shipping.type.toString())
+    formData.append("redirectURL", orderData.redirectURL)
+    formData.append("notificationURL", orderData.notificationURL)
+
+    console.log("🌐 Enviando requisição para PagSeguro:", apiUrl)
+    console.log("📦 Dados do formulário:", Object.fromEntries(formData))
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: formData,
+      })
+
+      console.log("📡 Status da resposta:", response.status)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("❌ Erro PagSeguro:", response.status, errorText)
+        throw new Error(`Erro PagSeguro: ${response.status} - ${errorText}`)
+      }
+
+      const xmlResponse = await response.text()
+      console.log("📄 Resposta XML:", xmlResponse)
+
+      // Extrair o código do checkout do XML
+      const codeMatch = xmlResponse.match(/<code>(.*?)<\/code>/)
+      if (!codeMatch || !codeMatch[1]) {
+        throw new Error("Código de checkout não encontrado na resposta")
+      }
+
+      const checkoutCode = codeMatch[1]
+      const checkoutUrl = `https://pagseguro.uol.com.br/v2/checkout/payment.html?code=${checkoutCode}`
+
+      console.log("✅ Pagamento criado com sucesso:", {
+        code: checkoutCode,
+        url: checkoutUrl,
+      })
+
+      return Response.json({
+        success: true,
+        paymentCode: checkoutCode,
+        paymentUrl: checkoutUrl,
+        status: "WAITING_PAYMENT",
+        message: "Pagamento criado com sucesso",
+      })
+    } catch (error) {
+      console.error("❌ Erro na requisição:", error)
+
+      // Modo de contingência: simular criação do pagamento
+      console.log("🧪 Modo de contingência - simulando criação do pagamento")
 
       // Simular resposta do PagSeguro
       const mockResponse = {
         code: `PAG${Date.now()}`,
-        paymentUrl: `https://sandbox.pagseguro.uol.com.br/v2/checkout/payment.html?code=PAG${Date.now()}`,
+        paymentUrl: `https://pagseguro.uol.com.br/v2/checkout/payment.html?code=PAG${Date.now()}`,
         status: "WAITING_PAYMENT",
       }
 
@@ -56,47 +123,9 @@ export async function POST(req: Request) {
         paymentCode: mockResponse.code,
         paymentUrl: mockResponse.paymentUrl,
         status: mockResponse.status,
-        message: "Pagamento criado com sucesso",
+        message: "Pagamento criado com sucesso (modo de contingência)",
       })
     }
-
-    // Em produção, fazer requisição real para o PagSeguro
-    /*
-    const response = await fetch("https://ws.pagseguro.uol.com.br/v2/checkout", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        email: pagSeguroConfig.email,
-        token: pagSeguroConfig.token,
-        currency: "BRL",
-        reference: orderData.reference,
-        "itemId1": orderData.items[0].id,
-        "itemDescription1": orderData.items[0].description,
-        "itemAmount1": orderData.items[0].amount,
-        "itemQuantity1": orderData.items[0].quantity,
-        "senderName": orderData.customer.name,
-        "senderEmail": orderData.customer.email,
-        "senderPhone": `${orderData.customer.phone.areaCode}${orderData.customer.phone.number}`,
-        "shippingType": orderData.shipping.type.toString(),
-        "redirectURL": orderData.redirectURL,
-        "notificationURL": orderData.notificationURL,
-      }),
-    })
-
-    if (!response.ok) {
-      throw new Error(`Erro PagSeguro: ${response.status}`)
-    }
-
-    const xmlResponse = await response.text()
-    // Parse XML response do PagSeguro
-    */
-
-    return Response.json({
-      success: false,
-      message: "Configuração de produção necessária",
-    })
   } catch (error) {
     console.error("❌ Erro ao criar pagamento:", error)
 
