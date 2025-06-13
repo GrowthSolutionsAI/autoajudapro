@@ -1,196 +1,125 @@
-import type { NextRequest } from "next/server"
-
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    console.log("🔔 Webhook PagSeguro recebido")
+    console.log("🔔 Webhook recebido do PagSeguro")
 
-    // Obter os dados da notificação
-    const body = await req.text()
-    console.log("📦 Dados do webhook:", body)
+    const formData = await req.formData()
+    const notificationCode = formData.get("notificationCode") as string
+    const notificationType = formData.get("notificationType") as string
 
-    // Extrair o código de notificação
-    const searchParams = new URLSearchParams(body)
-    const notificationCode = searchParams.get("notificationCode")
-    const notificationType = searchParams.get("notificationType")
+    console.log("📦 Dados do webhook:", { notificationCode, notificationType })
 
     if (!notificationCode || notificationType !== "transaction") {
-      console.warn("⚠️ Notificação inválida ou não é uma transação")
-      return Response.json({ success: false, message: "Notificação inválida" }, { status: 400 })
+      console.log("⚠️ Webhook ignorado - tipo não suportado")
+      return Response.json({ success: true, message: "Webhook ignorado" })
     }
 
-    // Configurações do PagSeguro
+    // CONFIGURAÇÃO PARA PRODUÇÃO
     const pagSeguroConfig = {
       token:
         process.env.PAGSEGURO_TOKEN ||
         "76dc1a75-f2d8-4250-a4a6-1da3e98ef8dfd0183b8241c5a02ad52d43f7f1c02604db6b-1882-4ccd-95b3-6b9929f5bfae",
       email: process.env.PAGSEGURO_EMAIL || "diego.souza44@gmail.com",
-      sandbox: true, // Ambiente de sandbox para testes
     }
 
-    // Consultar detalhes da transação
-    const apiUrl = pagSeguroConfig.sandbox
-      ? `https://ws.sandbox.pagseguro.uol.com.br/v3/transactions/notifications/${notificationCode}`
-      : `https://ws.pagseguro.uol.com.br/v3/transactions/notifications/${notificationCode}`
-
-    const url = new URL(apiUrl)
-    url.searchParams.append("email", pagSeguroConfig.email)
-    url.searchParams.append("token", pagSeguroConfig.token)
-
-    console.log("🌐 Consultando detalhes da transação:", url.toString())
+    // URL da API de PRODUÇÃO para consultar a notificação
+    const apiUrl = `https://ws.pagseguro.uol.com.br/v3/transactions/notifications/${notificationCode}`
 
     try {
-      // Implementação de retry para lidar com falhas temporárias
-      const maxRetries = 2
-      let retries = 0
-      let response = null
+      const queryParams = new URLSearchParams({
+        email: pagSeguroConfig.email,
+        token: pagSeguroConfig.token,
+      })
 
-      while (retries <= maxRetries) {
-        try {
-          response = await fetch(url.toString(), {
-            headers: {
-              Accept: "application/xml;charset=ISO-8859-1",
-            },
-          })
+      console.log("🌐 Consultando notificação em PRODUÇÃO:", apiUrl)
 
-          if (response.ok) break
+      const response = await fetch(`${apiUrl}?${queryParams}`, {
+        method: "GET",
+        headers: {
+          Accept: "application/xml;charset=ISO-8859-1",
+          "User-Agent": "AutoAjudaPro/1.0",
+        },
+        signal: AbortSignal.timeout(15000),
+      })
 
-          // Se não for um erro de rede ou temporário, não tente novamente
-          if (response.status !== 503 && response.status !== 429 && response.status !== 504) break
-
-          retries++
-          if (retries <= maxRetries) {
-            const waitTime = Math.pow(2, retries) * 1000 // Backoff exponencial
-            console.log(`⏳ Tentativa ${retries}/${maxRetries} falhou. Aguardando ${waitTime}ms...`)
-            await new Promise((resolve) => setTimeout(resolve, waitTime))
-          }
-        } catch (networkError) {
-          console.error("🌐 Erro de rede:", networkError)
-          retries++
-          if (retries <= maxRetries) {
-            const waitTime = Math.pow(2, retries) * 1000
-            console.log(`⏳ Erro de rede na tentativa ${retries}/${maxRetries}. Aguardando ${waitTime}ms...`)
-            await new Promise((resolve) => setTimeout(resolve, waitTime))
-          } else {
-            throw networkError
-          }
-        }
-      }
-
-      if (!response || !response.ok) {
-        const errorText = (await response?.text()) || "Sem resposta do servidor"
-        console.error("❌ Erro ao consultar transação:", response?.status, errorText)
-        throw new Error(`Erro ao consultar transação: ${response?.status || "Sem status"}`)
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("❌ Erro ao consultar notificação:", response.status, errorText)
+        throw new Error(`Erro na consulta: ${response.status}`)
       }
 
       const xmlResponse = await response.text()
-      console.log("📄 Resposta XML:", xmlResponse)
+      console.log("📄 Resposta XML da notificação:", xmlResponse)
 
-      // Extrair informações importantes da transação
-      const referenceMatch = xmlResponse.match(/<reference>(.*?)<\/reference>/)
+      // Extrair dados da transação
+      const codeMatch = xmlResponse.match(/<code>(.*?)<\/code>/)
       const statusMatch = xmlResponse.match(/<status>(.*?)<\/status>/)
-      const emailMatch = xmlResponse.match(/<sender>\s*<email>(.*?)<\/email>/)
-      const transactionIdMatch = xmlResponse.match(/<code>(.*?)<\/code>/)
+      const referenceMatch = xmlResponse.match(/<reference>(.*?)<\/reference>/)
+      const grossAmountMatch = xmlResponse.match(/<grossAmount>(.*?)<\/grossAmount>/)
+      const senderEmailMatch = xmlResponse.match(/<email>(.*?)<\/email>/)
 
-      if (!referenceMatch || !statusMatch) {
-        throw new Error("Dados da transação não encontrados na resposta")
-      }
-
-      const reference = referenceMatch[1]
-      const status = Number.parseInt(statusMatch[1])
-      const email = emailMatch ? emailMatch[1] : "email não encontrado"
-      const transactionId = transactionIdMatch ? transactionIdMatch[1] : "ID não encontrado"
+      const transactionCode = codeMatch ? codeMatch[1] : null
+      const status = statusMatch ? statusMatch[1] : null
+      const reference = referenceMatch ? referenceMatch[1] : null
+      const grossAmount = grossAmountMatch ? grossAmountMatch[1] : null
+      const senderEmail = senderEmailMatch ? senderEmailMatch[1] : null
 
       console.log("📊 Dados da transação:", {
-        reference,
+        transactionCode,
         status,
-        email,
-        transactionId,
+        reference,
+        grossAmount,
+        senderEmail,
       })
 
-      // Status do PagSeguro:
-      // 1: Aguardando pagamento
-      // 2: Em análise
-      // 3: Paga
-      // 4: Disponível
-      // 5: Em disputa
-      // 6: Devolvida
-      // 7: Cancelada
-      // 8: Debitado
-      // 9: Retenção temporária
+      // Mapear status
+      const statusMap: { [key: string]: string } = {
+        "1": "WAITING_PAYMENT",
+        "2": "IN_ANALYSIS",
+        "3": "PAID",
+        "4": "AVAILABLE",
+        "5": "IN_DISPUTE",
+        "6": "RETURNED",
+        "7": "CANCELLED",
+      }
 
-      if (status === 3 || status === 4) {
-        console.log("💰 Pagamento aprovado! Atualizando status do usuário para premium")
+      const mappedStatus = statusMap[status || "1"] || "UNKNOWN"
 
-        // TODO: Implementar a atualização do status do usuário no banco de dados
-        // Exemplo:
-        // await db.user.update({
-        //   where: { email },
-        //   data: { isPremium: true, premiumUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }
-        // })
-
-        // Enviar email de confirmação
+      // Se o pagamento foi aprovado, enviar email de confirmação
+      if (mappedStatus === "PAID" && senderEmail) {
         try {
-          if (process.env.RESEND_API_KEY) {
-            await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-              },
-              body: JSON.stringify({
-                from: "AutoAjuda Pro <no-reply@autoajudapro.com>",
-                to: [email, "diego.souza44@gmail.com"], // Enviar para o cliente e para o admin
-                subject: "Pagamento confirmado - AutoAjuda Pro",
-                html: `
-                  <h1>Pagamento confirmado!</h1>
-                  <p>O pagamento da assinatura AutoAjuda Pro foi confirmado.</p>
-                  <p><strong>Referência:</strong> ${reference}</p>
-                  <p><strong>ID da Transação:</strong> ${transactionId}</p>
-                  <p><strong>Email:</strong> ${email}</p>
-                  <p><strong>Status:</strong> ${mapStatusToText(status)}</p>
-                  <p>Agora você tem acesso ilimitado à Sofia por 30 dias!</p>
-                  <p>Acesse sua conta em: <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://autoajudapro.com"}">${process.env.NEXT_PUBLIC_APP_URL || "https://autoajudapro.com"}</a></p>
-                `,
-              }),
-            })
-            console.log("📧 Email de notificação enviado")
-          } else {
-            console.log("⚠️ RESEND_API_KEY não configurada, email não enviado")
-          }
+          await sendConfirmationEmail(senderEmail, {
+            transactionCode: transactionCode || "",
+            amount: grossAmount || "",
+            reference: reference || "",
+          })
+          console.log("✅ Email de confirmação enviado")
         } catch (emailError) {
           console.error("❌ Erro ao enviar email:", emailError)
         }
-      } else if (status === 7) {
-        console.log("❌ Pagamento cancelado!")
-
-        // TODO: Implementar lógica para lidar com pagamentos cancelados
-        // Exemplo:
-        // await db.payment.update({
-        //   where: { reference },
-        //   data: { status: "CANCELLED", updatedAt: new Date() }
-        // })
       }
 
       console.log("✅ Webhook processado com sucesso")
 
       return Response.json({
         success: true,
-        message: "Notificação processada com sucesso",
-        status: mapStatusToText(status),
-        statusCode: status,
+        message: "Webhook processado",
+        status: mappedStatus,
+        transactionCode,
       })
     } catch (error) {
       console.error("❌ Erro ao processar webhook:", error)
+
+      // Em produção, retornar erro real
       return Response.json(
         {
           success: false,
-          message: "Erro ao processar notificação",
+          message: error instanceof Error ? error.message : "Erro ao processar webhook",
         },
         { status: 500 },
       )
     }
   } catch (error) {
-    console.error("❌ Erro no webhook:", error)
+    console.error("❌ Erro geral no webhook:", error)
     return Response.json(
       {
         success: false,
@@ -201,19 +130,64 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Função auxiliar para mapear o código de status para texto
-function mapStatusToText(status: number): string {
-  const statusMap: Record<number, string> = {
-    1: "Aguardando pagamento",
-    2: "Em análise",
-    3: "Paga",
-    4: "Disponível",
-    5: "Em disputa",
-    6: "Devolvida",
-    7: "Cancelada",
-    8: "Debitado",
-    9: "Retenção temporária",
+// Função para enviar email de confirmação
+async function sendConfirmationEmail(
+  email: string,
+  transactionData: { transactionCode: string; amount: string; reference: string },
+) {
+  if (!process.env.RESEND_API_KEY) {
+    console.log("⚠️ RESEND_API_KEY não configurada - email não enviado")
+    return
   }
 
-  return statusMap[status] || "Status desconhecido"
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "AutoAjuda Pro <noreply@autoajudapro.com>",
+        to: [email],
+        subject: "Pagamento Confirmado - AutoAjuda Pro",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #10b981;">Pagamento Confirmado! 🎉</h2>
+            <p>Olá!</p>
+            <p>Seu pagamento foi processado com sucesso. Agora você tem acesso completo ao <strong>AutoAjuda Pro</strong>!</p>
+            
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3>Detalhes da Transação:</h3>
+              <p><strong>Código:</strong> ${transactionData.transactionCode}</p>
+              <p><strong>Valor:</strong> R$ ${transactionData.amount}</p>
+              <p><strong>Referência:</strong> ${transactionData.reference}</p>
+            </div>
+            
+            <p>Você já pode começar a usar a Sofia, nossa assistente de IA especializada em autoajuda!</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${process.env.NEXT_PUBLIC_APP_URL}" 
+                 style="background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+                Acessar AutoAjuda Pro
+              </a>
+            </div>
+            
+            <p style="color: #6b7280; font-size: 14px;">
+              Se você tiver alguma dúvida, entre em contato conosco.
+            </p>
+          </div>
+        `,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Erro ao enviar email: ${response.status}`)
+    }
+
+    console.log("✅ Email de confirmação enviado com sucesso")
+  } catch (error) {
+    console.error("❌ Erro ao enviar email de confirmação:", error)
+    throw error
+  }
 }
