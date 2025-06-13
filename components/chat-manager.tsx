@@ -5,35 +5,28 @@ import type React from "react"
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
 import {
-  Send,
-  Bot,
-  User,
-  X,
   Heart,
-  Lightbulb,
-  Smile,
   Brain,
   Target,
+  Briefcase,
+  Smile,
   Zap,
+  Send,
+  User,
+  X,
   Plus,
-  Trash2,
   MessageCircle,
   Crown,
   Lock,
-  Briefcase,
+  Lightbulb,
   Menu,
   ChevronLeft,
   Cpu,
+  Trash2,
+  Bot,
 } from "lucide-react"
 import PaymentModal from "./payment-modal"
-
-interface ChatManagerProps {
-  isOpen: boolean
-  onClose: () => void
-  userName: string
-}
 
 interface ChatSession {
   id: string
@@ -49,6 +42,12 @@ interface Message {
   id: string
   role: "user" | "assistant" | "system"
   content: string
+}
+
+interface ChatManagerProps {
+  isOpen: boolean
+  onClose: () => void
+  userName: string
 }
 
 const FREE_MESSAGE_LIMIT = 5
@@ -85,11 +84,52 @@ Como você gostaria que eu te chamasse?`,
   const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Para controle mobile
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [showAreaButtons, setShowAreaButtons] = useState(false)
+  const [showAreaOptions, setShowAreaOptions] = useState(false)
 
   const currentChat = chatSessions.find((chat) => chat.id === currentChatId)
   const userMessageCount = currentChat?.messageCount || 0
   const isFreeLimitReached = userMessageCount >= FREE_MESSAGE_LIMIT && !currentChat?.isPaid
   const remainingFreeMessages = Math.max(0, FREE_MESSAGE_LIMIT - userMessageCount)
+
+  // Áreas de especialidade com ícones e descrições
+  const areaOptions = [
+    {
+      id: "relacionamentos",
+      title: "Relacionamentos",
+      icon: <Heart className="h-6 w-6 text-pink-500" />,
+      description: "Melhore seus relacionamentos amorosos, familiares e amizades",
+    },
+    {
+      id: "saude-mental",
+      title: "Saúde Mental",
+      icon: <Brain className="h-6 w-6 text-blue-500" />,
+      description: "Suporte para ansiedade, estresse e desafios emocionais",
+    },
+    {
+      id: "desenvolvimento-pessoal",
+      title: "Desenvolvimento Pessoal",
+      icon: <Target className="h-6 w-6 text-purple-500" />,
+      description: "Aumente autoestima, confiança e desenvolva hábitos positivos",
+    },
+    {
+      id: "carreira",
+      title: "Carreira",
+      icon: <Briefcase className="h-6 w-6 text-yellow-500" />,
+      description: "Decisões profissionais e equilíbrio trabalho-vida",
+    },
+    {
+      id: "financas-pessoais",
+      title: "Finanças Pessoais",
+      icon: <Smile className="h-6 w-6 text-green-500" />,
+      description: "Organize finanças, reduza dívidas e crie hábitos saudáveis",
+    },
+    {
+      id: "proposito-vida",
+      title: "Propósito de Vida",
+      icon: <Zap className="h-6 w-6 text-orange-500" />,
+      description: "Encontre significado, propósito e direção na sua vida",
+    },
+  ]
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -113,13 +153,16 @@ Como você gostaria que eu te chamasse?`,
       if (currentChat.messages.length === 1) {
         setShowAreaButtons(false)
         setShowSuggestions(false)
+        setShowAreaOptions(false)
       } else if (currentChat.messages.length === 3) {
         // Após o usuário fornecer seu nome e a IA responder, mostrar os botões de área
         setShowAreaButtons(true)
         setShowSuggestions(true)
+        setShowAreaOptions(true)
       } else {
         setShowAreaButtons(false)
         setShowSuggestions(false)
+        setShowAreaOptions(false)
       }
     }
   }, [currentChatId, currentChat])
@@ -183,6 +226,7 @@ Como você gostaria que eu te chamasse?`,
     setCurrentChatId(newChatId)
     setShowSuggestions(false)
     setShowAreaButtons(false)
+    setShowAreaOptions(false)
     setIsSidebarOpen(false) // Fechar sidebar no mobile após criar novo chat
   }
 
@@ -219,6 +263,12 @@ Como você gostaria que eu te chamasse?`,
   const handleChatSelect = (chatId: string) => {
     setCurrentChatId(chatId)
     setIsSidebarOpen(false) // Fechar sidebar no mobile após selecionar chat
+  }
+
+  const handleAreaSelection = (area: string) => {
+    const message = `Gostaria de ajuda com ${area}`
+    setShowAreaOptions(false)
+    handleSendMessage(message)
   }
 
   const handleSendMessage = async (messageText: string = input) => {
@@ -443,12 +493,6 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
     handleSendMessage()
   }
 
-  const handleAreaSelection = (area: string, message: string) => {
-    setShowAreaButtons(false)
-    setShowSuggestions(false)
-    handleSendMessage(message)
-  }
-
   if (!isOpen) return null
 
   return (
@@ -639,42 +683,6 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
               </div>
             )}
 
-            {showAreaButtons && currentChat && currentChat.messages.length === 3 && showSuggestions && (
-              <div className="text-center py-4 md:py-6">
-                <h3 className="text-lg md:text-xl font-semibold text-gray-900 mb-3 md:mb-4">
-                  Sobre o que gostaria de conversar hoje?
-                </h3>
-                <p className="text-sm md:text-base text-gray-600 mb-4 md:mb-6 max-w-3xl mx-auto px-4">
-                  Escolha um tópico abaixo ou digite sua própria mensagem.
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 max-w-5xl mx-auto px-4">
-                  {suggestions.map((suggestion, index) => (
-                    <Card
-                      key={index}
-                      className={`cursor-pointer hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 bg-white/60 backdrop-blur-sm border-0 ${
-                        isFreeLimitReached ? "opacity-50 cursor-not-allowed" : ""
-                      }`}
-                      onClick={() => !isFreeLimitReached && handleSuggestionClick(suggestion.text)}
-                    >
-                      <CardContent className="p-3 md:p-4 text-center">
-                        <suggestion.icon className="h-6 w-6 md:h-8 md:w-8 text-blue-500 mx-auto mb-2 md:mb-3" />
-                        <p className="text-xs md:text-sm font-medium text-gray-900 mb-1">{suggestion.text}</p>
-                        <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                          {suggestion.category}
-                        </span>
-                        {isFreeLimitReached && (
-                          <div className="mt-2">
-                            <Lock className="h-4 w-4 text-gray-400 mx-auto" />
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -712,6 +720,27 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
               </div>
             ))}
 
+            {/* Opções de áreas após o usuário informar seu nome */}
+            {showAreaOptions && currentChat && currentChat.messages.length === 3 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 my-4 max-w-4xl mx-auto">
+                {areaOptions.map((area) => (
+                  <Button
+                    key={area.id}
+                    variant="outline"
+                    className="flex items-center justify-start gap-3 p-4 h-auto text-left bg-white hover:bg-blue-50 border-2 border-blue-200 hover:border-blue-400 rounded-xl transition-all duration-200"
+                    onClick={() => handleAreaSelection(area.title)}
+                    disabled={isLoading}
+                  >
+                    <div className="flex-shrink-0">{area.icon}</div>
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="font-medium text-gray-900 truncate">{area.title}</div>
+                      <div className="text-xs text-gray-600 line-clamp-2 overflow-ellipsis">{area.description}</div>
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            )}
+
             {isLoading && (
               <div className="flex gap-2 md:gap-4 mb-6 md:mb-8 justify-start">
                 <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-2 md:p-3 rounded-full flex-shrink-0 h-10 w-10 md:h-12 md:w-12 flex items-center justify-center">
@@ -743,89 +772,6 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Botões de Área - Mostrar apenas após o usuário fornecer seu nome */}
-          {showAreaButtons && currentChat && currentChat.messages.length === 3 && (
-            <div className="p-3 md:p-6 border-t border-blue-100">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl mx-auto">
-                <Button
-                  onClick={() =>
-                    handleAreaSelection(
-                      "Relacionamentos",
-                      "Preciso de orientação sobre relacionamentos - conflitos, comunicação, términos ou construção de laços saudáveis.",
-                    )
-                  }
-                  className="h-auto p-4 bg-white hover:bg-blue-50 border-2 border-blue-200 hover:border-blue-400 text-left rounded-xl transition-all duration-200"
-                  variant="outline"
-                >
-                  <div className="flex items-center gap-3 w-full">
-                    <Heart className="h-6 w-6 text-pink-500 flex-shrink-0" />
-                    <div>
-                      <div className="font-semibold text-gray-900">Relacionamentos</div>
-                      <div className="text-sm text-gray-600">Conflitos, comunicação, términos</div>
-                    </div>
-                  </div>
-                </Button>
-
-                <Button
-                  onClick={() =>
-                    handleAreaSelection(
-                      "Saúde Mental",
-                      "Preciso de ajuda com saúde mental - ansiedade, estresse, depressão, autoconhecimento ou regulação emocional.",
-                    )
-                  }
-                  className="h-auto p-4 bg-white hover:bg-blue-50 border-2 border-blue-200 hover:border-blue-400 text-left rounded-xl transition-all duration-200"
-                  variant="outline"
-                >
-                  <div className="flex items-center gap-3 w-full">
-                    <Brain className="h-6 w-6 text-blue-500 flex-shrink-0" />
-                    <div>
-                      <div className="font-semibold text-gray-900">Saúde Mental</div>
-                      <div className="text-sm text-gray-600">Ansiedade, estresse, depressão</div>
-                    </div>
-                  </div>
-                </Button>
-
-                <Button
-                  onClick={() =>
-                    handleAreaSelection(
-                      "Desenvolvimento Pessoal",
-                      "Quero trabalhar meu desenvolvimento pessoal - autoestima, confiança, hábitos saudáveis ou produtividade.",
-                    )
-                  }
-                  className="h-auto p-4 bg-white hover:bg-blue-50 border-2 border-blue-200 hover:border-blue-400 text-left rounded-xl transition-all duration-200"
-                  variant="outline"
-                >
-                  <div className="flex items-center gap-3 w-full">
-                    <Target className="h-6 w-6 text-purple-500 flex-shrink-0" />
-                    <div>
-                      <div className="font-semibold text-gray-900">Desenvolvimento Pessoal</div>
-                      <div className="text-sm text-gray-600">Autoestima, confiança, hábitos</div>
-                    </div>
-                  </div>
-                </Button>
-
-                <Button
-                  onClick={() =>
-                    handleAreaSelection(
-                      "Carreira",
-                      "Preciso de orientação sobre carreira - decisões profissionais, equilíbrio trabalho-vida, burnout ou mudança de carreira.",
-                    )
-                  }
-                  className="h-auto p-4 bg-white hover:bg-blue-50 border-2 border-blue-200 hover:border-blue-400 text-left rounded-xl transition-all duration-200"
-                  variant="outline"
-                >
-                  <div className="flex items-center gap-3 w-full">
-                    <Briefcase className="h-6 w-6 text-yellow-500 flex-shrink-0" />
-                    <div>
-                      <div className="font-semibold text-gray-900">Carreira</div>
-                      <div className="text-sm text-gray-600">Decisões profissionais, burnout</div>
-                    </div>
-                  </div>
-                </Button>
-              </div>
-            </div>
-          )}
-
           {/* Input Area */}
           <div className="bg-white/80 backdrop-blur-md border-t border-blue-100 p-3 md:p-4">
             <form onSubmit={handleFormSubmit} className="flex gap-2 md:gap-3 max-w-4xl mx-auto">
@@ -840,13 +786,13 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
                       : "Digite sua mensagem para a Sofia IA..."
                 }
                 className="flex-1 rounded-full border-blue-200 focus:border-blue-500 py-6 px-4 md:px-6 text-base"
-                disabled={isLoading || isFreeLimitReached}
+                disabled={isLoading || isFreeLimitReached || showAreaOptions}
               />
               <Button
                 type="submit"
-                disabled={isLoading || !input.trim() || isFreeLimitReached}
+                disabled={isLoading || !input.trim() || isFreeLimitReached || showAreaOptions}
                 className={`bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-full p-3 md:p-4 ${
-                  isFreeLimitReached ? "opacity-50 cursor-not-allowed" : ""
+                  isFreeLimitReached || showAreaOptions ? "opacity-50 cursor-not-allowed" : ""
                 }`}
               >
                 <Send className="h-5 w-5 md:h-6 md:w-6" />
