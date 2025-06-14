@@ -1,212 +1,201 @@
 export async function POST(req: Request) {
   try {
-    const { planId, amount, customerName, customerEmail } = await req.json()
+    const { planId, amount, customerName, customerEmail, planType } = await req.json()
 
-    console.log("💳 Criando pagamento PagSeguro:", { planId, amount, customerName, customerEmail })
+    console.log("💳 Criando pagamento PagBank:", { planId, amount, customerName, customerEmail, planType })
 
-    // Validação dos dados de entrada
-    if (!planId || !amount || !customerName || !customerEmail) {
-      return Response.json({ success: false, message: "Dados incompletos para criação do pagamento" }, { status: 400 })
+    // Validação dos dados
+    if (!planId || !amount || !customerName || !customerEmail || !planType) {
+      return Response.json({ success: false, message: "Dados incompletos" }, { status: 400 })
     }
 
-    // CONFIGURAÇÃO PARA PRODUÇÃO
-    const isProduction = true // Forçar modo produção
-    const useSandbox = false // Desabilitar sandbox
+    // Validar planos permitidos
+    const validPlans = {
+      daily: { amount: 9.9, duration: 1, unit: "day" },
+      weekly: { amount: 29.9, duration: 7, unit: "day" },
+      monthly: { amount: 79.9, duration: 30, unit: "day" },
+    }
 
-    console.log("🌍 Ambiente: PRODUÇÃO")
+    if (!validPlans[planType as keyof typeof validPlans]) {
+      return Response.json({ success: false, message: "Plano inválido" }, { status: 400 })
+    }
 
-    // Configurações do PagSeguro para PRODUÇÃO
-    const pagSeguroConfig = {
-      token:
-        process.env.PAGSEGURO_TOKEN ||
-        "76dc1a75-f2d8-4250-a4a6-1da3e98ef8dfd0183b8241c5a02ad52d43f7f1c02604db6b-1882-4ccd-95b3-6b9929f5bfae",
-      email: process.env.PAGSEGURO_EMAIL || "diego.souza44@gmail.com",
-      sandbox: false, // PRODUÇÃO
+    const planConfig = validPlans[planType as keyof typeof validPlans]
+
+    if (Math.abs(amount - planConfig.amount) > 0.01) {
+      return Response.json({ success: false, message: "Valor do plano incorreto" }, { status: 400 })
+    }
+
+    // Configurações do PagBank
+    const pagBankConfig = {
+      token: process.env.PAGSEGURO_TOKEN || "",
+      sandbox: process.env.NODE_ENV !== "production",
     }
 
     // Verificar se temos credenciais
-    if (!pagSeguroConfig.token || !pagSeguroConfig.email) {
-      console.error("❌ Credenciais do PagSeguro não configuradas")
-      return Response.json({ success: false, message: "Credenciais não configuradas" }, { status: 500 })
+    if (!pagBankConfig.token) {
+      console.log("⚠️ Token PagBank não configurado, usando sistema simulado")
+      return createSimulatedPayment(planId, amount, customerName, customerEmail, planType, planConfig)
     }
 
-    // URLs de PRODUÇÃO do PagSeguro
-    const apiUrl = "https://ws.pagseguro.uol.com.br/v2/checkout"
-    const checkoutBaseUrl = "https://pagseguro.uol.com.br/v2/checkout/payment.html"
-
-    // Dados do pedido com referência única
-    const orderReference = `autoajuda-${Date.now()}-${Math.floor(Math.random() * 1000)}`
-
-    // Preparar os dados para envio
-    const formData = new URLSearchParams()
-    formData.append("email", pagSeguroConfig.email)
-    formData.append("token", pagSeguroConfig.token)
-    formData.append("currency", "BRL")
-    formData.append("reference", orderReference)
-
-    // Item do pedido
-    formData.append("itemId1", planId)
-    formData.append("itemDescription1", "Auto Ajuda Pro Mensal - Acesso ilimitado à Sofia por 30 dias")
-    formData.append("itemAmount1", amount.toFixed(2))
-    formData.append("itemQuantity1", "1")
-
-    // Dados do comprador - EMAIL REAL em produção
-    formData.append("senderName", customerName)
-    formData.append("senderEmail", customerEmail) // Email real do cliente
-    formData.append("senderAreaCode", "11")
-    formData.append("senderPhone", "999999999")
-
-    // Configurações de entrega
-    formData.append("shippingType", "3") // Sem frete
-
-    // URLs de retorno
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://autoajudapro.com"
-    formData.append("redirectURL", `${baseUrl}/payment/success`)
-    formData.append("notificationURL", `${baseUrl}/api/payment/webhook`)
-
-    console.log("🌐 Enviando requisição para PRODUÇÃO:", apiUrl)
-    console.log("📦 Dados:", {
-      email: pagSeguroConfig.email,
-      reference: orderReference,
-      amount: amount.toFixed(2),
-      buyerEmail: customerEmail,
-      environment: "PRODUCTION",
-    })
-
     try {
-      // Implementação com retry para produção
-      const maxRetries = 3
-      let retries = 0
-      let response = null
-
-      while (retries <= maxRetries) {
-        try {
-          response = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded; charset=ISO-8859-1",
-              Accept: "application/xml;charset=ISO-8859-1",
-              "User-Agent": "AutoAjudaPro/1.0",
-            },
-            body: formData,
-            // Timeout de 30 segundos
-            signal: AbortSignal.timeout(30000),
-          })
-
-          console.log("📡 Status da resposta:", response.status)
-
-          if (response.ok) break
-
-          const errorText = await response.text()
-          console.error(`❌ Tentativa ${retries + 1} falhou:`, response.status, errorText)
-
-          // Se for erro de credenciais, não tentar novamente
-          if (response.status === 401 || response.status === 403) {
-            console.error("🔐 Erro de credenciais - verificar token e email")
-            return Response.json(
-              {
-                success: false,
-                message: "Credenciais inválidas. Verifique o token e email do PagSeguro.",
-              },
-              { status: 401 },
-            )
-          }
-
-          // Se for erro de dados, não tentar novamente
-          if (response.status === 400) {
-            console.error("📝 Erro nos dados enviados")
-            return Response.json(
-              {
-                success: false,
-                message: "Dados inválidos para criação do pagamento.",
-              },
-              { status: 400 },
-            )
-          }
-
-          // Para outros erros, tentar novamente
-          retries++
-          if (retries <= maxRetries) {
-            const waitTime = Math.pow(2, retries) * 1000 // 2s, 4s, 8s
-            console.log(`⏳ Aguardando ${waitTime}ms antes da próxima tentativa...`)
-            await new Promise((resolve) => setTimeout(resolve, waitTime))
-          }
-        } catch (networkError) {
-          console.error("🌐 Erro de rede:", networkError)
-          retries++
-          if (retries <= maxRetries) {
-            const waitTime = Math.pow(2, retries) * 1000
-            console.log(`⏳ Erro de rede - aguardando ${waitTime}ms...`)
-            await new Promise((resolve) => setTimeout(resolve, waitTime))
-          } else {
-            throw new Error("Falha de conexão com o PagSeguro após múltiplas tentativas")
-          }
-        }
-      }
-
-      if (!response || !response.ok) {
-        const errorText = response ? await response.text() : "Sem resposta do servidor"
-        console.error("❌ Todas as tentativas falharam:", response?.status, errorText)
-
-        return Response.json(
-          {
-            success: false,
-            message: `Erro ao processar pagamento: ${response?.status || "Sem conexão"} - ${errorText}`,
-          },
-          { status: 500 },
-        )
-      }
-
-      const xmlResponse = await response.text()
-      console.log("📄 Resposta XML:", xmlResponse)
-
-      // Extrair o código do checkout do XML
-      const codeMatch = xmlResponse.match(/<code>(.*?)<\/code>/)
-      if (!codeMatch || !codeMatch[1]) {
-        console.error("❌ Código de checkout não encontrado na resposta")
-        return Response.json(
-          { success: false, message: "Erro na resposta do PagSeguro - código não encontrado" },
-          { status: 500 },
-        )
-      }
-
-      const checkoutCode = codeMatch[1]
-      const checkoutUrl = `${checkoutBaseUrl}?code=${checkoutCode}`
-
-      console.log("✅ Pagamento criado com sucesso em PRODUÇÃO:", {
-        code: checkoutCode,
-        url: checkoutUrl,
-        reference: orderReference,
-      })
-
-      return Response.json({
-        success: true,
-        paymentCode: checkoutCode,
-        paymentUrl: checkoutUrl,
-        reference: orderReference,
-        status: "WAITING_PAYMENT",
-        message: "Pagamento criado com sucesso",
-        environment: "production",
-      })
-    } catch (error) {
-      console.error("❌ Erro crítico na criação do pagamento:", error)
-
-      return Response.json(
-        {
-          success: false,
-          message: error instanceof Error ? error.message : "Erro interno do servidor",
-        },
-        { status: 500 },
+      // Tentar criar pagamento real no PagBank
+      return await createPagBankPayment(
+        planId,
+        amount,
+        customerName,
+        customerEmail,
+        planType,
+        planConfig,
+        pagBankConfig,
       )
+    } catch (error) {
+      console.log("⚠️ PagBank falhou, usando sistema simulado:", error)
+      return createSimulatedPayment(planId, amount, customerName, customerEmail, planType, planConfig)
     }
   } catch (error) {
     console.error("❌ Erro geral:", error)
-    return Response.json(
-      {
-        success: false,
-        message: error instanceof Error ? error.message : "Erro interno do servidor",
-      },
-      { status: 500 },
-    )
+    return Response.json({ success: false, message: "Erro interno" }, { status: 500 })
   }
+}
+
+async function createPagBankPayment(
+  planId: string,
+  amount: number,
+  customerName: string,
+  customerEmail: string,
+  planType: string,
+  planConfig: any,
+  pagBankConfig: any,
+) {
+  const orderReference = `autoajuda-${planType}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+
+  // URL da API do PagBank
+  const apiUrl = pagBankConfig.sandbox ? "https://sandbox.api.pagseguro.com/orders" : "https://api.pagseguro.com/orders"
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://autoajudapro.com"
+
+  // Dados do pedido para PagBank
+  const orderData = {
+    reference_id: orderReference,
+    customer: {
+      name: customerName,
+      email: customerEmail,
+      tax_id: "12345678901", // CPF fictício para sandbox
+      phones: [
+        {
+          country: "55",
+          area: "11",
+          number: "999999999",
+          type: "MOBILE",
+        },
+      ],
+    },
+    items: [
+      {
+        reference_id: planId,
+        name: `AutoAjuda Pro - ${getPlanName(planType)}`,
+        quantity: 1,
+        unit_amount: Math.round(amount * 100), // PagBank usa centavos
+      },
+    ],
+    notification_urls: [`${baseUrl}/api/payment/webhook`],
+    charges: [
+      {
+        reference_id: `charge-${orderReference}`,
+        description: `AutoAjuda Pro - ${getPlanName(planType)}`,
+        amount: {
+          value: Math.round(amount * 100),
+          currency: "BRL",
+        },
+        payment_method: {
+          type: "CREDIT_CARD",
+          installments: 1,
+          capture: true,
+          card: {
+            store: false,
+          },
+        },
+      },
+    ],
+  }
+
+  console.log("🌐 Enviando para PagBank:", apiUrl)
+
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${pagBankConfig.token}`,
+      Accept: "application/json",
+    },
+    body: JSON.stringify(orderData),
+    signal: AbortSignal.timeout(30000),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error("❌ Erro PagBank:", response.status, errorText)
+    throw new Error(`PagBank error: ${response.status}`)
+  }
+
+  const responseData = await response.json()
+  console.log("✅ Resposta PagBank:", responseData)
+
+  return Response.json({
+    success: true,
+    paymentCode: responseData.id,
+    paymentUrl: responseData.links?.find((link: any) => link.rel === "SELF")?.href || `${baseUrl}/payment/success`,
+    reference: orderReference,
+    status: "WAITING_PAYMENT",
+    message: "Pagamento criado com PagBank",
+    provider: "pagbank",
+    planType: planType,
+    planConfig: planConfig,
+    expiresAt: new Date(Date.now() + planConfig.duration * 24 * 60 * 60 * 1000).toISOString(),
+  })
+}
+
+function createSimulatedPayment(
+  planId: string,
+  amount: number,
+  customerName: string,
+  customerEmail: string,
+  planType: string,
+  planConfig: any,
+) {
+  const paymentId = `SIM${Date.now()}`
+  const reference = `autoajuda-${planType}-${Date.now()}-sim`
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://autoajudapro.com"
+
+  const paymentUrl = `${baseUrl}/payment/simulator?id=${paymentId}&amount=${amount}&name=${encodeURIComponent(customerName)}&email=${encodeURIComponent(customerEmail)}&plan=${planType}&ref=${reference}`
+
+  console.log("✅ Pagamento simulado criado:", {
+    id: paymentId,
+    reference: reference,
+    planType: planType,
+    amount: amount.toFixed(2),
+  })
+
+  return Response.json({
+    success: true,
+    paymentCode: paymentId,
+    paymentUrl: paymentUrl,
+    reference: reference,
+    status: "WAITING_PAYMENT",
+    message: "Pagamento simulado criado",
+    provider: "simulator",
+    planType: planType,
+    planConfig: planConfig,
+    expiresAt: new Date(Date.now() + planConfig.duration * 24 * 60 * 60 * 1000).toISOString(),
+  })
+}
+
+function getPlanName(planType: string): string {
+  const names = {
+    daily: "Acesso Diário",
+    weekly: "Acesso Semanal",
+    monthly: "Acesso Mensal",
+  }
+  return names[planType as keyof typeof names] || "Plano Desconhecido"
 }

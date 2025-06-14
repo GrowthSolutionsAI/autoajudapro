@@ -26,6 +26,7 @@ import {
   Trash2,
   Bot,
   RefreshCw,
+  Calendar,
 } from "lucide-react"
 import PaymentModal from "./payment-modal"
 
@@ -51,7 +52,15 @@ interface ChatManagerProps {
   userName: string
 }
 
-const FREE_MESSAGE_LIMIT = 5
+interface UserSubscription {
+  id: string
+  planType: string
+  status: string
+  expiresAt: string
+  isActive: boolean
+}
+
+const FREE_MESSAGE_LIMIT = 3 // Reduzido para incentivar assinatura
 
 // Adicione esta função no início do arquivo, fora do componente
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -85,21 +94,61 @@ Como você gostaria que eu te chamasse?`,
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Para controle mobile
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [showAreaButtons, setShowAreaButtons] = useState(false)
   const [showAreaOptions, setShowAreaOptions] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
-
-  // Adicione estes novos estados
   const [isRetrying, setIsRetrying] = useState(false)
   const [retryTimeout, setRetryTimeout] = useState<NodeJS.Timeout | null>(null)
   const [lastMessageError, setLastMessageError] = useState<string | null>(null)
 
+  // Novos estados para controle de assinatura
+  const [userSubscription, setUserSubscription] = useState<UserSubscription | null>(null)
+  const [isCheckingSubscription, setIsCheckingSubscription] = useState(true)
+
   const currentChat = chatSessions.find((chat) => chat.id === currentChatId)
   const userMessageCount = currentChat?.messageCount || 0
-  const isFreeLimitReached = userMessageCount >= FREE_MESSAGE_LIMIT && !currentChat?.isPaid
-  const remainingFreeMessages = Math.max(0, FREE_MESSAGE_LIMIT - userMessageCount)
+
+  // Verificar se usuário tem acesso baseado na assinatura
+  const hasActiveSubscription = userSubscription?.isActive && new Date(userSubscription.expiresAt) > new Date()
+  const isFreeLimitReached = userMessageCount >= FREE_MESSAGE_LIMIT && !hasActiveSubscription
+  const remainingFreeMessages = hasActiveSubscription ? "∞" : Math.max(0, FREE_MESSAGE_LIMIT - userMessageCount)
+
+  // Verificar assinatura do usuário
+  useEffect(() => {
+    const checkUserSubscription = async () => {
+      try {
+        setIsCheckingSubscription(true)
+
+        // Simular email do usuário (em produção, pegar do contexto de autenticação)
+        const userEmail = "user@example.com" // TODO: Pegar email real do usuário logado
+
+        const response = await fetch(`/api/user/subscription?email=${encodeURIComponent(userEmail)}`)
+        const data = await response.json()
+
+        if (data.success && data.subscription) {
+          setUserSubscription(data.subscription)
+          console.log("✅ Assinatura verificada:", data.subscription)
+        } else {
+          setUserSubscription(null)
+          console.log("ℹ️ Usuário sem assinatura ativa")
+        }
+      } catch (error) {
+        console.error("❌ Erro ao verificar assinatura:", error)
+        setUserSubscription(null)
+      } finally {
+        setIsCheckingSubscription(false)
+      }
+    }
+
+    if (isOpen) {
+      checkUserSubscription()
+      // Verificar a cada 5 minutos
+      const interval = setInterval(checkUserSubscription, 5 * 60 * 1000)
+      return () => clearInterval(interval)
+    }
+  }, [isOpen])
 
   // Áreas de especialidade com ícones e descrições
   const areaOptions = [
@@ -238,7 +287,7 @@ Como você gostaria que eu te chamasse?`,
       createdAt: new Date().toISOString(),
       lastActivity: new Date().toISOString(),
       messageCount: 0,
-      isPaid: false,
+      isPaid: hasActiveSubscription,
     }
 
     setChatSessions((prev) => [...prev, newChat])
@@ -246,7 +295,7 @@ Como você gostaria que eu te chamasse?`,
     setShowSuggestions(false)
     setShowAreaButtons(false)
     setShowAreaOptions(false)
-    setIsSidebarOpen(false) // Fechar sidebar no mobile após criar novo chat
+    setIsSidebarOpen(false)
   }
 
   const deleteChat = (chatId: string) => {
@@ -263,7 +312,6 @@ Como você gostaria que eu te chamasse?`,
   const handleSuggestionClick = (suggestion: string) => {
     setInput(suggestion)
     setShowSuggestions(false)
-    // Enviar automaticamente após um pequeno delay
     setTimeout(() => {
       handleSendMessage(suggestion)
     }, 100)
@@ -274,14 +322,17 @@ Como você gostaria que eu te chamasse?`,
   }
 
   const handlePaymentSuccess = () => {
-    // Marcar chat atual como pago
-    setChatSessions((prev) => prev.map((chat) => (chat.id === currentChatId ? { ...chat, isPaid: true } : chat)))
+    // Recarregar assinatura após pagamento
     setIsPaymentModalOpen(false)
+    // Verificar assinatura novamente
+    setTimeout(() => {
+      window.location.reload() // Recarregar página para atualizar estado
+    }, 2000)
   }
 
   const handleChatSelect = (chatId: string) => {
     setCurrentChatId(chatId)
-    setIsSidebarOpen(false) // Fechar sidebar no mobile após selecionar chat
+    setIsSidebarOpen(false)
   }
 
   const handleAreaSelection = (area: string) => {
@@ -294,19 +345,14 @@ Como você gostaria que eu te chamasse?`,
   const handleRetry = async () => {
     if (!currentChat || messages.length === 0) return
 
-    // Encontrar a última mensagem do usuário
     const lastUserMessageIndex = [...messages].reverse().findIndex((msg) => msg.role === "user")
     if (lastUserMessageIndex === -1) return
 
     const lastUserMessage = [...messages].reverse()[lastUserMessageIndex]
 
-    // Remover a mensagem de erro (última mensagem do assistente)
     const lastAssistantMessage = messages[messages.length - 1]
     if (lastAssistantMessage.role === "assistant") {
-      // Remover a última mensagem (erro) do estado local
       setMessages((prev) => prev.slice(0, -1))
-
-      // Remover a última mensagem (erro) da sessão de chat
       setChatSessions((prev) =>
         prev.map((chat) =>
           chat.id === currentChatId
@@ -319,26 +365,23 @@ Como você gostaria que eu te chamasse?`,
       )
     }
 
-    // Tentar enviar a mensagem novamente
     setIsRetrying(true)
     await handleSendMessage(lastUserMessage.content)
     setIsRetrying(false)
   }
 
-  // Modificar a função handleSendMessage para incluir melhor tratamento de erros
+  // Função principal para enviar mensagens
   const handleSendMessage = async (messageText: string = input) => {
     if (!messageText.trim() || !currentChat || (isLoading && !isRetrying)) return
 
-    // Verificar limite de mensagens gratuitas
+    // Verificar limite de mensagens para usuários sem assinatura
     if (isFreeLimitReached) {
       setIsPaymentModalOpen(true)
       return
     }
 
-    // Definir newMessageCount no início da função
     const newMessageCount = currentChat.messageCount + 1
 
-    // Se estiver retentando, não mostrar a mensagem do usuário novamente
     if (!isRetrying) {
       console.log("📤 Enviando mensagem:", messageText.substring(0, 50) + "...")
 
@@ -346,20 +389,16 @@ Como você gostaria que eu te chamasse?`,
       setInput("")
       setLastMessageError(null)
 
-      // Adicionar mensagem do usuário
       const userMessage: Message = {
         id: Date.now().toString(),
         role: "user",
         content: messageText,
       }
 
-      // Atualizar mensagens locais imediatamente
       const updatedMessages = [...messages, userMessage]
       setMessages(updatedMessages)
 
-      // Atualizar título do chat se for a primeira mensagem do usuário
       if (currentChat.messages.length === 1) {
-        // Esta é a resposta ao "Como você gostaria que eu te chamasse?"
         const title = `Conversa com ${messageText}`
         setChatSessions((prev) =>
           prev.map((chat) =>
@@ -374,7 +413,6 @@ Como você gostaria que eu te chamasse?`,
           ),
         )
       } else {
-        // Apenas incrementar contador
         setChatSessions((prev) =>
           prev.map((chat) =>
             chat.id === currentChatId
@@ -388,7 +426,6 @@ Como você gostaria que eu te chamasse?`,
         )
       }
 
-      // Atualizar sessão de chat com mensagem do usuário
       setChatSessions((prev) =>
         prev.map((chat) =>
           chat.id === currentChatId
@@ -403,16 +440,12 @@ Como você gostaria que eu te chamasse?`,
     }
 
     try {
-      // Preparar mensagens para envio (excluir system messages)
       const messagesForAPI = isRetrying
         ? messages.filter((msg) => msg.role !== "system")
         : [...messages, { role: "user", content: messageText }].filter((msg) => msg.role !== "system")
 
       console.log("🌐 Fazendo requisição para /api/chat...")
-      console.log("📤 Enviando mensagens:", messagesForAPI.length)
-      console.log("📝 Mensagem do usuário:", messageText)
 
-      // Implementação de retry com backoff exponencial
       let response = null
       let retries = 0
       const maxRetries = 2
@@ -429,15 +462,13 @@ Como você gostaria que eu te chamasse?`,
             }),
           })
 
-          // Se a resposta for bem-sucedida ou não for um erro temporário, saia do loop
           if (response.ok || (response.status !== 429 && response.status !== 503 && response.status !== 504)) {
             break
           }
 
-          // Se for um erro de rate limit ou temporário, tente novamente
           retries++
           if (retries <= maxRetries) {
-            const waitTime = Math.pow(2, retries) * 1000 // Backoff exponencial: 2s, 4s
+            const waitTime = Math.pow(2, retries) * 1000
             console.log(`⏳ Tentativa ${retries}/${maxRetries} falhou. Aguardando ${waitTime}ms...`)
             await sleep(waitTime)
           }
@@ -454,9 +485,6 @@ Como você gostaria que eu te chamasse?`,
         }
       }
 
-      console.log("📡 Status da resposta:", response?.status)
-
-      // Se houver erro de rate limit, tente usar o fallback
       if (response && !response.ok && response.status === 429) {
         console.log("⚠️ Rate limit atingido, usando fallback...")
         const fallbackData = await getFallbackResponse(messagesForAPI)
@@ -468,10 +496,7 @@ Como você gostaria que eu te chamasse?`,
             content: fallbackData.message,
           }
 
-          // Atualizar mensagens com resposta de fallback
           setMessages((prev) => [...prev, assistantMessage])
-
-          // Atualizar sessão de chat com resposta de fallback
           setChatSessions((prev) =>
             prev.map((chat) =>
               chat.id === currentChatId
@@ -496,43 +521,30 @@ Como você gostaria que eu te chamasse?`,
       }
 
       const responseText = await response.text()
-      console.log("📄 Resposta bruta (primeiros 200 chars):", responseText.substring(0, 200))
-
       let data
       try {
         data = JSON.parse(responseText)
       } catch (parseError) {
         console.error("❌ Erro ao fazer parse do JSON:", parseError)
-        console.log("📄 Resposta completa:", responseText)
         throw new Error("Resposta inválida da API")
       }
-
-      console.log("📦 Dados recebidos:", {
-        success: data.success,
-        hasMessage: !!data.message,
-        messageLength: data.message?.length || 0,
-        metadata: data.metadata,
-      })
 
       if (!data.message) {
         console.error("❌ Resposta sem mensagem:", data)
         throw new Error("Resposta vazia da API")
       }
 
-      // Verificar se não é a mensagem de fallback
-      const isFallback = data.message.includes("dificuldades técnicas momentâneas")
-      if (isFallback) {
-        console.warn("⚠️ Recebida resposta de fallback - problema na API")
-      }
-
-      // Adicionar aviso sobre limite se estiver próximo
       let assistantContent = data.message
-      const remainingAfterThis = FREE_MESSAGE_LIMIT - newMessageCount
 
-      if (!currentChat.isPaid && remainingAfterThis <= 2 && remainingAfterThis > 0) {
-        assistantContent += `\n\n---\n💡 **Aviso:** Você tem ${remainingAfterThis} mensagem${remainingAfterThis > 1 ? "s" : ""} gratuita${remainingAfterThis > 1 ? "s" : ""} restante${remainingAfterThis > 1 ? "s" : ""}. Para continuar nossa conversa sem limites, considere assinar um de nossos planos! 🌟`
-      } else if (!currentChat.isPaid && remainingAfterThis === 0) {
-        assistantContent += `\n\n---\n🔒 **Limite atingido!** Esta foi sua última mensagem gratuita. Para continuar nossa jornada juntos, escolha um plano que se adeque às suas necessidades. Estou ansiosa para continuar te ajudando! 💙`
+      // Adicionar aviso sobre limite apenas para usuários sem assinatura
+      if (!hasActiveSubscription) {
+        const remainingAfterThis = FREE_MESSAGE_LIMIT - newMessageCount
+
+        if (remainingAfterThis <= 1 && remainingAfterThis > 0) {
+          assistantContent += `\n\n---\n💡 **Aviso:** Você tem ${remainingAfterThis} mensagem gratuita restante. Para conversas ilimitadas, escolha um de nossos planos! 🌟`
+        } else if (remainingAfterThis === 0) {
+          assistantContent += `\n\n---\n🔒 **Limite atingido!** Esta foi sua última mensagem gratuita. Para continuar nossa conversa, escolha um plano que se adeque às suas necessidades! 💙`
+        }
       }
 
       const assistantMessage: Message = {
@@ -541,15 +553,7 @@ Como você gostaria que eu te chamasse?`,
         content: assistantContent,
       }
 
-      console.log("✅ Mensagem do assistente criada:")
-      console.log("📏 Tamanho:", assistantMessage.content.length, "caracteres")
-      console.log("📝 Início:", assistantMessage.content.substring(0, 100) + "...")
-      console.log("🤖 É fallback?", isFallback)
-
-      // Atualizar mensagens com resposta da IA
       setMessages((prev) => [...prev, assistantMessage])
-
-      // Atualizar sessão de chat com resposta da IA
       setChatSessions((prev) =>
         prev.map((chat) =>
           chat.id === currentChatId
@@ -562,72 +566,28 @@ Como você gostaria que eu te chamasse?`,
         ),
       )
 
-      // Verificar se deve abrir modal de pagamento após esta resposta
-      if (newMessageCount >= FREE_MESSAGE_LIMIT && !currentChat.isPaid) {
+      // Abrir modal de pagamento se necessário
+      if (!hasActiveSubscription && newMessageCount >= FREE_MESSAGE_LIMIT) {
         setTimeout(() => {
           setIsPaymentModalOpen(true)
-        }, 2000) // Aguardar 2 segundos para o usuário ler a resposta
+        }, 2000)
       }
 
-      console.log("✅ Mensagem processada e exibida com sucesso")
-      // Resetar contador de tentativas após sucesso
       setRetryCount(0)
     } catch (error) {
       console.error("❌ Erro ao enviar mensagem:", error)
       setLastMessageError(error instanceof Error ? error.message : "Erro desconhecido")
 
-      // Se for um erro de rate limit, tente usar o fallback
-      if (error instanceof Error && error.message.includes("rate_limit_exceeded")) {
-        console.log("⚠️ Rate limit detectado no erro, tentando fallback...")
-
-        try {
-          const messagesForAPI = messages.filter((msg) => msg.role !== "system")
-          const fallbackData = await getFallbackResponse(messagesForAPI)
-
-          if (fallbackData && fallbackData.message) {
-            const assistantMessage: Message = {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: fallbackData.message,
-            }
-
-            // Atualizar mensagens com resposta de fallback
-            setMessages((prev) => [...prev, assistantMessage])
-
-            // Atualizar sessão de chat com resposta de fallback
-            setChatSessions((prev) =>
-              prev.map((chat) =>
-                chat.id === currentChatId
-                  ? {
-                      ...chat,
-                      messages: [...chat.messages, { ...assistantMessage }],
-                      lastActivity: new Date().toISOString(),
-                    }
-                  : chat,
-              ),
-            )
-
-            setIsLoading(false)
-            return
-          }
-        } catch (fallbackError) {
-          console.error("❌ Erro ao usar fallback:", fallbackError)
-        }
-      }
-
-      // Mensagem de erro para o usuário
       const errorMessage: Message = {
         id: (Date.now() + 2).toString(),
         role: "assistant",
         content: `Desculpe, estou com dificuldades técnicas no momento. 😔
 
-**Detalhes do erro:** ${error instanceof Error ? error.message : "Erro desconhecido"}
-
 **Enquanto isso, aqui estão algumas dicas:**
 
 🧘 **Respiração Calmante:**
 - Inspire por 4 segundos
-- Segure por 4 segundos
+- Segure por 4 segundos  
 - Expire por 6 segundos
 
 💭 **Lembre-se:**
@@ -635,11 +595,10 @@ Como você gostaria que eu te chamasse?`,
 - Este momento difícil vai passar
 - Estou aqui para te apoiar
 
-**[Tentar novamente]** Clique para tentar enviar sua mensagem novamente.`,
+Tente enviar sua mensagem novamente em alguns instantes. 💙`,
       }
 
       setMessages((prev) => [...prev, errorMessage])
-
       setChatSessions((prev) =>
         prev.map((chat) =>
           chat.id === currentChatId
@@ -652,7 +611,6 @@ Como você gostaria que eu te chamasse?`,
         ),
       )
 
-      // Configurar retry automático após 5 segundos
       const timeout = setTimeout(() => {
         console.log("🔄 Tentando novamente automaticamente...")
         handleRetry()
@@ -768,7 +726,7 @@ Como você gostaria que eu te chamasse?`,
                     <div className="flex items-center gap-2 mb-1">
                       <MessageCircle className="h-4 w-4 text-blue-500 flex-shrink-0" />
                       <span className="text-sm font-medium text-gray-900 truncate">{chat.title}</span>
-                      {chat.isPaid && <Crown className="h-3 w-3 text-yellow-500" />}
+                      {hasActiveSubscription && <Crown className="h-3 w-3 text-yellow-500" />}
                     </div>
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-gray-500">
@@ -778,9 +736,11 @@ Como você gostaria que eu te chamasse?`,
                           minute: "2-digit",
                         })}
                       </p>
-                      {!chat.isPaid && (
+                      {!hasActiveSubscription && (
                         <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                          {Math.max(0, FREE_MESSAGE_LIMIT - chat.messageCount)} restantes
+                          {typeof remainingFreeMessages === "number"
+                            ? `${Math.max(0, FREE_MESSAGE_LIMIT - chat.messageCount)} restantes`
+                            : "Ilimitado"}
                         </span>
                       )}
                     </div>
@@ -812,7 +772,24 @@ Como você gostaria que eu te chamasse?`,
               </div>
               <div>
                 <p className="font-medium text-gray-900">{userName}</p>
-                <p className="text-xs text-gray-500">{currentChat?.isPaid ? "Usuário Premium" : "Usuário Gratuito"}</p>
+                <div className="flex items-center gap-1">
+                  {hasActiveSubscription ? (
+                    <>
+                      <Crown className="h-3 w-3 text-yellow-500" />
+                      <span className="text-xs text-yellow-600">Premium Ativo</span>
+                    </>
+                  ) : (
+                    <>
+                      <Calendar className="h-3 w-3 text-gray-500" />
+                      <span className="text-xs text-gray-500">Usuário Gratuito</span>
+                    </>
+                  )}
+                </div>
+                {hasActiveSubscription && userSubscription && (
+                  <p className="text-xs text-gray-500">
+                    Expira: {new Date(userSubscription.expiresAt).toLocaleDateString("pt-BR")}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -846,9 +823,9 @@ Como você gostaria que eu te chamasse?`,
                 <p className="text-xs md:text-sm text-gray-600 truncate">IA Especialista em Autoajuda</p>
               </div>
 
-              {/* Status do usuário - Oculto em telas muito pequenas */}
+              {/* Status do usuário */}
               <div className="hidden sm:flex items-center gap-2 md:gap-4">
-                {currentChat?.isPaid ? (
+                {hasActiveSubscription ? (
                   <div className="flex items-center gap-2 bg-yellow-100 px-2 md:px-3 py-1 rounded-full">
                     <Crown className="w-3 h-3 md:w-4 md:h-4 text-yellow-600" />
                     <span className="text-xs md:text-sm text-yellow-700 font-medium">Premium</span>
@@ -1012,7 +989,7 @@ Como você gostaria que eu te chamasse?`,
                       onClick={() => setIsPaymentModalOpen(true)}
                       className="text-blue-600 hover:text-blue-800 font-medium"
                     >
-                      Assinar plano
+                      Escolher plano
                     </button>
                   </span>
                 </div>
@@ -1020,7 +997,9 @@ Como você gostaria que eu te chamasse?`,
                 <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
                   <Lightbulb className="h-3 w-3 md:h-4 md:w-4 text-yellow-500" />
                   <span>
-                    {remainingFreeMessages} mensagens gratuitas restantes. Suas conversas são privadas e seguras.
+                    {hasActiveSubscription
+                      ? "Mensagens ilimitadas ativadas! Suas conversas são privadas e seguras."
+                      : `${remainingFreeMessages} mensagens gratuitas restantes. Suas conversas são privadas e seguras.`}
                   </span>
                 </div>
               )}
@@ -1052,6 +1031,7 @@ Como você gostaria que eu te chamasse?`,
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         onSuccess={handlePaymentSuccess}
+        userName={userName}
       />
     </>
   )

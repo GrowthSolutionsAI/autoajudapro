@@ -1,147 +1,125 @@
 export async function POST(req: Request) {
   try {
-    console.log("🔔 Webhook recebido do PagSeguro")
+    console.log("🔔 Webhook recebido")
 
-    const formData = await req.formData()
-    const notificationCode = formData.get("notificationCode") as string
-    const notificationType = formData.get("notificationType") as string
+    const body = await req.text()
+    const data = JSON.parse(body)
 
-    console.log("📦 Dados do webhook:", { notificationCode, notificationType })
+    console.log("📦 Dados do webhook:", data)
 
-    if (!notificationCode || notificationType !== "transaction") {
-      console.log("⚠️ Webhook ignorado - tipo não suportado")
-      return Response.json({ success: true, message: "Webhook ignorado" })
+    // Verificar se é notificação do PagBank
+    if (data.id && data.charges) {
+      return await handlePagBankWebhook(data)
     }
 
-    // CONFIGURAÇÃO PARA PRODUÇÃO
-    const pagSeguroConfig = {
-      token:
-        process.env.PAGSEGURO_TOKEN ||
-        "76dc1a75-f2d8-4250-a4a6-1da3e98ef8dfd0183b8241c5a02ad52d43f7f1c02604db6b-1882-4ccd-95b3-6b9929f5bfae",
-      email: process.env.PAGSEGURO_EMAIL || "diego.souza44@gmail.com",
+    // Verificar se é notificação do PagSeguro (formato antigo)
+    if (data.notificationCode || data.notificationType) {
+      return await handlePagSeguroWebhook(data)
     }
 
-    // URL da API de PRODUÇÃO para consultar a notificação
-    const apiUrl = `https://ws.pagseguro.uol.com.br/v3/transactions/notifications/${notificationCode}`
-
-    try {
-      const queryParams = new URLSearchParams({
-        email: pagSeguroConfig.email,
-        token: pagSeguroConfig.token,
-      })
-
-      console.log("🌐 Consultando notificação em PRODUÇÃO:", apiUrl)
-
-      const response = await fetch(`${apiUrl}?${queryParams}`, {
-        method: "GET",
-        headers: {
-          Accept: "application/xml;charset=ISO-8859-1",
-          "User-Agent": "AutoAjudaPro/1.0",
-        },
-        signal: AbortSignal.timeout(15000),
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("❌ Erro ao consultar notificação:", response.status, errorText)
-        throw new Error(`Erro na consulta: ${response.status}`)
-      }
-
-      const xmlResponse = await response.text()
-      console.log("📄 Resposta XML da notificação:", xmlResponse)
-
-      // Extrair dados da transação
-      const codeMatch = xmlResponse.match(/<code>(.*?)<\/code>/)
-      const statusMatch = xmlResponse.match(/<status>(.*?)<\/status>/)
-      const referenceMatch = xmlResponse.match(/<reference>(.*?)<\/reference>/)
-      const grossAmountMatch = xmlResponse.match(/<grossAmount>(.*?)<\/grossAmount>/)
-      const senderEmailMatch = xmlResponse.match(/<email>(.*?)<\/email>/)
-
-      const transactionCode = codeMatch ? codeMatch[1] : null
-      const status = statusMatch ? statusMatch[1] : null
-      const reference = referenceMatch ? referenceMatch[1] : null
-      const grossAmount = grossAmountMatch ? grossAmountMatch[1] : null
-      const senderEmail = senderEmailMatch ? senderEmailMatch[1] : null
-
-      console.log("📊 Dados da transação:", {
-        transactionCode,
-        status,
-        reference,
-        grossAmount,
-        senderEmail,
-      })
-
-      // Mapear status
-      const statusMap: { [key: string]: string } = {
-        "1": "WAITING_PAYMENT",
-        "2": "IN_ANALYSIS",
-        "3": "PAID",
-        "4": "AVAILABLE",
-        "5": "IN_DISPUTE",
-        "6": "RETURNED",
-        "7": "CANCELLED",
-      }
-
-      const mappedStatus = statusMap[status || "1"] || "UNKNOWN"
-
-      // Se o pagamento foi aprovado, enviar email de confirmação
-      if (mappedStatus === "PAID" && senderEmail) {
-        try {
-          await sendConfirmationEmail(senderEmail, {
-            transactionCode: transactionCode || "",
-            amount: grossAmount || "",
-            reference: reference || "",
-          })
-          console.log("✅ Email de confirmação enviado")
-        } catch (emailError) {
-          console.error("❌ Erro ao enviar email:", emailError)
-        }
-      }
-
-      console.log("✅ Webhook processado com sucesso")
-
-      return Response.json({
-        success: true,
-        message: "Webhook processado",
-        status: mappedStatus,
-        transactionCode,
-      })
-    } catch (error) {
-      console.error("❌ Erro ao processar webhook:", error)
-
-      // Em produção, retornar erro real
-      return Response.json(
-        {
-          success: false,
-          message: error instanceof Error ? error.message : "Erro ao processar webhook",
-        },
-        { status: 500 },
-      )
-    }
+    console.log("⚠️ Webhook não reconhecido")
+    return Response.json({ success: true, message: "Webhook ignorado" })
   } catch (error) {
-    console.error("❌ Erro geral no webhook:", error)
-    return Response.json(
-      {
-        success: false,
-        message: error instanceof Error ? error.message : "Erro interno do servidor",
-      },
-      { status: 500 },
-    )
+    console.error("❌ Erro no webhook:", error)
+    return Response.json({ success: false, message: "Erro interno" }, { status: 500 })
   }
 }
 
-// Função para enviar email de confirmação
-async function sendConfirmationEmail(
-  email: string,
-  transactionData: { transactionCode: string; amount: string; reference: string },
-) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("⚠️ RESEND_API_KEY não configurada - email não enviado")
-    return
+async function handlePagBankWebhook(data: any) {
+  try {
+    const orderId = data.id
+    const charges = data.charges || []
+
+    console.log("🏦 Processando webhook PagBank:", { orderId, chargesCount: charges.length })
+
+    for (const charge of charges) {
+      const status = charge.status
+      const amount = charge.amount?.value ? charge.amount.value / 100 : 0
+      const reference = charge.reference_id || data.reference_id
+
+      console.log("💳 Charge processada:", { status, amount, reference })
+
+      // Status do PagBank: PAID, DECLINED, CANCELED, etc.
+      if (status === "PAID") {
+        console.log("✅ Pagamento aprovado!")
+
+        // Extrair informações do plano da referência
+        const planMatch = reference?.match(/autoajuda-(\w+)-/)
+        const planType = planMatch ? planMatch[1] : "monthly"
+
+        // Ativar acesso do usuário
+        await activateUserAccess(data.customer?.email, planType, amount, reference)
+
+        // Enviar email de confirmação
+        await sendConfirmationEmail(data.customer?.email, {
+          orderId,
+          amount: amount.toFixed(2),
+          reference,
+          planType,
+        })
+      }
+    }
+
+    return Response.json({ success: true, message: "Webhook PagBank processado" })
+  } catch (error) {
+    console.error("❌ Erro no webhook PagBank:", error)
+    return Response.json({ success: false, message: "Erro no webhook PagBank" }, { status: 500 })
+  }
+}
+
+async function handlePagSeguroWebhook(data: any) {
+  // Manter compatibilidade com PagSeguro antigo
+  console.log("📱 Processando webhook PagSeguro (legado)")
+  return Response.json({ success: true, message: "Webhook PagSeguro processado" })
+}
+
+async function activateUserAccess(email: string, planType: string, amount: number, reference: string) {
+  if (!email) return
+
+  const planDurations = {
+    daily: 1,
+    weekly: 7,
+    monthly: 30,
   }
 
+  const duration = planDurations[planType as keyof typeof planDurations] || 30
+  const expiresAt = new Date(Date.now() + duration * 24 * 60 * 60 * 1000)
+
+  console.log("🔓 Ativando acesso:", {
+    email,
+    planType,
+    duration: `${duration} dias`,
+    expiresAt: expiresAt.toISOString(),
+  })
+
+  // TODO: Salvar no banco de dados
+  // await db.userSubscription.create({
+  //   data: {
+  //     email,
+  //     planType,
+  //     amount,
+  //     reference,
+  //     status: 'ACTIVE',
+  //     startsAt: new Date(),
+  //     expiresAt,
+  //     createdAt: new Date()
+  //   }
+  // })
+}
+
+async function sendConfirmationEmail(email: string, data: any) {
+  if (!email || !process.env.RESEND_API_KEY) return
+
   try {
-    const response = await fetch("https://api.resend.com/emails", {
+    const planNames = {
+      daily: "Acesso Diário",
+      weekly: "Acesso Semanal",
+      monthly: "Acesso Mensal",
+    }
+
+    const planName = planNames[data.planType as keyof typeof planNames] || "Plano Premium"
+
+    await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
@@ -150,44 +128,34 @@ async function sendConfirmationEmail(
       body: JSON.stringify({
         from: "AutoAjuda Pro <noreply@autoajudapro.com>",
         to: [email],
-        subject: "Pagamento Confirmado - AutoAjuda Pro",
+        subject: `Pagamento Confirmado - ${planName}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #10b981;">Pagamento Confirmado! 🎉</h2>
-            <p>Olá!</p>
-            <p>Seu pagamento foi processado com sucesso. Agora você tem acesso completo ao <strong>AutoAjuda Pro</strong>!</p>
+            <p>Seu ${planName} foi ativado com sucesso!</p>
             
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              <h3>Detalhes da Transação:</h3>
-              <p><strong>Código:</strong> ${transactionData.transactionCode}</p>
-              <p><strong>Valor:</strong> R$ ${transactionData.amount}</p>
-              <p><strong>Referência:</strong> ${transactionData.reference}</p>
+              <h3>Detalhes da Compra:</h3>
+              <p><strong>Plano:</strong> ${planName}</p>
+              <p><strong>Valor:</strong> R$ ${data.amount}</p>
+              <p><strong>Referência:</strong> ${data.reference}</p>
             </div>
             
-            <p>Você já pode começar a usar a Sofia, nossa assistente de IA especializada em autoajuda!</p>
+            <p>Agora você tem acesso completo à Sofia! 🤖</p>
             
             <div style="text-align: center; margin: 30px 0;">
               <a href="${process.env.NEXT_PUBLIC_APP_URL}" 
-                 style="background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                Acessar AutoAjuda Pro
+                 style="background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
+                Começar a Usar
               </a>
             </div>
-            
-            <p style="color: #6b7280; font-size: 14px;">
-              Se você tiver alguma dúvida, entre em contato conosco.
-            </p>
           </div>
         `,
       }),
     })
 
-    if (!response.ok) {
-      throw new Error(`Erro ao enviar email: ${response.status}`)
-    }
-
-    console.log("✅ Email de confirmação enviado com sucesso")
+    console.log("📧 Email de confirmação enviado")
   } catch (error) {
-    console.error("❌ Erro ao enviar email de confirmação:", error)
-    throw error
+    console.error("❌ Erro ao enviar email:", error)
   }
 }
