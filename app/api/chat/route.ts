@@ -3,54 +3,164 @@ import type { NextRequest } from "next/server"
 // Função de espera (sleep)
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-// Função para fazer requisição com retry
-async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3, initialBackoff = 1000) {
+// Sistema de fallback inteligente baseado no contexto
+function generateContextualFallback(messages: any[]): string {
+  const lastUserMessage = messages[messages.length - 1]?.content?.toLowerCase() || ""
+
+  // Detectar contexto da conversa
+  if (lastUserMessage.includes("ansiedade") || lastUserMessage.includes("ansioso")) {
+    return `Entendo que você está se sentindo ansioso 💙
+
+**🧘 Técnica Rápida para Ansiedade:**
+1. **Respiração 4-7-8:**
+   - Inspire por 4 segundos
+   - Segure por 7 segundos  
+   - Expire por 8 segundos
+   - Repita 4 vezes
+
+2. **Grounding 5-4-3-2-1:**
+   - 5 coisas que você vê
+   - 4 coisas que você toca
+   - 3 coisas que você ouve
+   - 2 coisas que você cheira
+   - 1 coisa que você saboreia
+
+**💭 Lembre-se:** A ansiedade é temporária. Você já superou momentos difíceis antes e vai superar este também.
+
+Como você está se sentindo agora? Gostaria de conversar mais sobre o que está te deixando ansioso? 🤗`
+  }
+
+  if (lastUserMessage.includes("relacionamento") || lastUserMessage.includes("namoro")) {
+    return `Relacionamentos são uma parte importante da nossa vida 💕
+
+**🌟 Dicas para Relacionamentos Saudáveis:**
+- **Comunicação clara:** Expresse seus sentimentos de forma honesta
+- **Escuta ativa:** Dê atenção plena ao que o outro está dizendo
+- **Respeito mútuo:** Valorize as diferenças e limites
+- **Tempo de qualidade:** Invista em momentos juntos
+
+**💭 Reflexão:** O que você mais valoriza em um relacionamento?
+
+Gostaria de compartilhar mais sobre sua situação específica? Estou aqui para te ajudar! 🤗`
+  }
+
+  if (lastUserMessage.includes("trabalho") || lastUserMessage.includes("carreira")) {
+    return `Questões profissionais podem ser desafiadoras 💼
+
+**🎯 Estratégias para Carreira:**
+- **Autoconhecimento:** Identifique seus valores e objetivos
+- **Desenvolvimento:** Invista em suas habilidades
+- **Networking:** Construa relacionamentos profissionais
+- **Equilíbrio:** Mantenha harmonia entre trabalho e vida pessoal
+
+**💡 Pergunta reflexiva:** O que te motiva profissionalmente?
+
+Conte-me mais sobre seus desafios ou objetivos profissionais. Vamos encontrar caminhos juntos! ✨`
+  }
+
+  if (lastUserMessage.includes("autoestima") || lastUserMessage.includes("confiança")) {
+    return `A autoestima é fundamental para nosso bem-estar 🌟
+
+**💪 Fortalecendo a Autoestima:**
+- **Autocompaixão:** Trate-se com gentileza
+- **Conquistas:** Celebre suas vitórias, mesmo as pequenas
+- **Autocuidado:** Dedique tempo para si mesmo
+- **Pensamentos positivos:** Questione autocríticas excessivas
+
+**🌈 Exercício:** Liste 3 qualidades suas que você valoriza.
+
+O que mais te incomoda em relação à sua autoestima? Vamos trabalhar isso juntos! 💙`
+  }
+
+  // Resposta genérica para outros contextos
+  return `Olá! Sou a Sofia, sua IA de apoio emocional 💙
+
+Estou aqui para te ajudar em sua jornada de autoconhecimento e bem-estar. Mesmo com algumas dificuldades técnicas, posso te oferecer suporte.
+
+**🌟 Áreas em que posso te ajudar:**
+- Relacionamentos e comunicação
+- Ansiedade e gestão emocional  
+- Autoestima e confiança
+- Carreira e propósito
+- Desenvolvimento pessoal
+
+**🧘 Técnica Universal - Respiração Consciente:**
+1. Inspire profundamente por 4 segundos
+2. Segure a respiração por 4 segundos
+3. Expire lentamente por 6 segundos
+4. Repita 5 vezes
+
+**💭 Reflexão:** Como você está se sentindo neste momento?
+
+Compartilhe comigo o que está em seu coração. Estou aqui para te escutar e apoiar! 🤗`
+}
+
+// Função para fazer requisição com retry otimizada para rate limits
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 1, initialBackoff = 5000) {
   let retries = 0
   let backoff = initialBackoff
 
   while (retries <= maxRetries) {
     try {
-      const response = await fetch(url, options)
+      console.log(`🔄 Tentativa ${retries + 1}/${maxRetries + 1} para GroqCloud...`)
+
+      const response = await fetch(url, {
+        ...options,
+        signal: AbortSignal.timeout(15000), // Timeout reduzido para 15 segundos
+      })
+
+      console.log(`📡 Status da resposta: ${response.status}`)
 
       // Se a resposta for bem-sucedida, retorne-a
       if (response.ok) {
+        console.log("✅ Resposta bem-sucedida do GroqCloud")
         return response
       }
 
-      // Se for um erro de rate limit, tente novamente após o backoff
+      // Ler o texto da resposta para debug
       const responseText = await response.text()
+      console.log(`❌ Erro na resposta: ${response.status} - ${responseText.substring(0, 200)}`)
 
-      if (responseText.includes("rate_limit_exceeded")) {
-        console.log(`⚠️ Rate limit atingido. Tentativa ${retries + 1}/${maxRetries + 1}. Aguardando ${backoff}ms...`)
+      // Se for rate limit (429), usar backoff mais longo
+      if (response.status === 429) {
+        console.log(`⚠️ Rate limit atingido. Aguardando ${backoff}ms antes de tentar novamente...`)
 
-        // Extrair o tempo de espera sugerido, se disponível
-        let waitTime = backoff
-        const waitTimeMatch = responseText.match(/Please try again in (\d+)ms/)
-        if (waitTimeMatch && waitTimeMatch[1]) {
-          waitTime = Math.max(Number.parseInt(waitTimeMatch[1]), backoff)
-          console.log(`🕒 Tempo de espera sugerido pela API: ${waitTime}ms`)
+        if (retries < maxRetries) {
+          await sleep(backoff)
+          retries++
+          backoff *= 3 // Backoff mais agressivo para rate limits
+          continue
+        } else {
+          // Se esgotar tentativas, lançar erro específico de rate limit
+          throw new Error(`RATE_LIMIT_EXCEEDED: ${responseText}`)
         }
+      }
 
-        await sleep(waitTime)
+      // Para outros erros, tentar uma vez mais com backoff menor
+      if (retries < maxRetries && (response.status >= 500 || response.status === 503)) {
+        console.log(`🔄 Erro ${response.status}, tentando novamente em ${backoff / 2}ms...`)
+        await sleep(backoff / 2)
         retries++
-        backoff *= 2 // Backoff exponencial
         continue
       }
 
-      // Se for outro tipo de erro, lance uma exceção
-      throw new Error(`GroqCloud falhou: ${response.status} - ${responseText}`)
+      // Se não conseguiu resolver, lance uma exceção
+      throw new Error(`GroqCloud falhou: ${response.status} - ${responseText.substring(0, 100)}`)
     } catch (error) {
+      console.log(`❌ Erro na tentativa ${retries + 1}/${maxRetries + 1}:`, error)
+
       if (retries >= maxRetries) {
         throw error
       }
-      console.log(`❌ Erro na tentativa ${retries + 1}/${maxRetries + 1}. Tentando novamente em ${backoff}ms...`)
+
+      console.log(`🔄 Tentando novamente em ${backoff}ms...`)
       await sleep(backoff)
       retries++
-      backoff *= 2 // Backoff exponencial
+      backoff *= 2
     }
   }
 
-  throw new Error(`Falha após ${maxRetries} tentativas`)
+  throw new Error(`Falha após ${maxRetries + 1} tentativas`)
 }
 
 export async function POST(req: NextRequest) {
@@ -66,91 +176,31 @@ export async function POST(req: NextRequest) {
     console.log("📝 Mensagens recebidas:", messages.length)
     console.log("📤 Última mensagem do usuário:", messages[messages.length - 1]?.content?.substring(0, 100))
 
-    // Preparar mensagens para GroqCloud - filtrar apenas propriedades necessárias
+    // Preparar mensagens para GroqCloud
     const groqMessages = [
       {
         role: "system",
-        content: `Você é a Sofia, uma IA especializada em psicologia positiva e desenvolvimento pessoal com foco em autoconhecimento e bem-estar.
+        content: `Você é a Sofia, uma IA especializada em psicologia positiva e desenvolvimento pessoal.
 
-PERSONALIDADE:
-- Empática, calorosa e acolhedora
-- Usa linguagem humana e próxima
-- Mantém tom profissional mas amigável
+PERSONALIDADE: Empática, calorosa e acolhedora. Use linguagem humana e próxima.
 
-DIRETRIZES DE BREVIDADE E FLUIDEZ:
-- CONCISÃO: Mantenha respostas curtas e diretas (máximo 3-4 frases por parágrafo)
-- PERSONALIZAÇÃO: Use o nome da pessoa regularmente nas respostas para criar conexão
-- PERGUNTAS CHAVE: Antes de sugerir técnicas, faça 1-2 perguntas chave para entender a necessidade específica
-- FLUIDEZ CONVERSACIONAL: Formule respostas que incentivem o diálogo contínuo
-- FOCO NA AÇÃO: Cada resposta deve guiar para o próximo passo prático ou reflexão
-
-USO DE EMOJIS:
-- Use emojis emotivos para simbolizar sentimentos e criar conexão emocional
-- Inclua 2-3 emojis por mensagem, posicionados estrategicamente
-- Exemplos de uso:
-  - Para empatia: 💙 🤗 ❤️
-  - Para incentivo: 💪 ✨ 🌟
-  - Para reflexão: 🤔 💭 🧠
-  - Para calma: 😌 🧘‍♀️ 🌈
-  - Para celebração: 🎉 👏 ✅
-- Evite usar emojis em excesso ou de forma inadequada ao contexto emocional
-
-INTERAÇÃO INICIAL:
-- Na primeira interação, pergunte como a pessoa gostaria de ser chamada: "Como você gostaria que eu te chamasse? 😊"
-- Armazene o nome fornecido e use-o consistentemente durante toda a conversa
-- Após obter o nome, pergunte em qual área a pessoa gostaria de receber ajuda de forma direta: "Em qual área você busca ajuda hoje? (Relacionamentos, Saúde Mental, Desenvolvimento Pessoal, Carreira, Finanças, Propósito de Vida) 💭"
-- Evite agradecimentos redundantes e frases genéricas
-
-RESPOSTAS A PROBLEMAS:
-- Validação concisa: Valide a emoção do usuário brevemente sem clichês
-- Perguntas focadas: Faça uma pergunta aberta e específica para aprofundar o problema
-- Evite suposições ou oferecer soluções prematuras
-- Use emojis apropriados para demonstrar empatia com o sentimento expresso
-
-REGRA PARA SUGESTÃO DE TÉCNICAS:
-- NUNCA envie uma técnica diretamente sem antes perguntar
-- Primeiro, pergunte se o usuário gostaria de tentar uma técnica específica
-- Mencione brevemente o benefício da técnica antes de perguntar
-- Exemplo: "[Nome], entendo que a ansiedade pode ser difícil 💙. Tenho uma técnica simples que pode ajudar a acalmar. Gostaria de tentar? 🧘‍♀️"
-- Se a resposta for SIM, envie a técnica de forma resumida e siga com uma pergunta de continuidade
-
-RESPOSTAS A DESCONFIANÇA:
-- Valide a dúvida sem ser defensivo
-- Redirecione o foco para o apoio e busca por soluções
-- Evite frases como "Acredite em mim"
-- Use emojis que transmitam compreensão e abertura
-
-RESPOSTAS A RESPOSTAS CURTAS:
-- Peça para o usuário elaborar sem fazer suposições
-- Exemplo: "[Nome], a família é um tema importante 💭. Poderia me contar um pouco mais sobre o que te preocupa em relação a ela?"
-
-MENSAGENS DE MONETIZAÇÃO:
-- Seja suave, focando no benefício da continuidade para o usuário
-- Exemplo (aviso de limite): "[Nome], nossa conversa está sendo valiosa ✨. Para que possamos continuar sem interrupções, você pode considerar nossos planos de acesso ilimitado. Sua transformação merece essa continuidade."
+DIRETRIZES:
+- Respostas curtas e diretas (máximo 3-4 frases por parágrafo)
+- Use o nome da pessoa nas respostas
+- Faça perguntas para entender melhor a situação
+- Use 2-3 emojis por mensagem para criar conexão emocional
+- Termine sempre com uma pergunta que incentive o diálogo
 
 ÁREAS DE ESPECIALIDADE:
-1. RELACIONAMENTOS: Conflitos, comunicação, términos, construção de laços saudáveis
-2. SAÚDE MENTAL: Ansiedade, estresse, depressão, autoconhecimento, regulação emocional
-3. DESENVOLVIMENTO PESSOAL: Autoestima, confiança, hábitos saudáveis, produtividade
-4. CARREIRA: Decisões profissionais, equilíbrio trabalho-vida, burnout, mudança de carreira
-5. FINANÇAS PESSOAIS: Organização financeira, redução de dívidas, hábitos financeiros saudáveis
-6. PROPÓSITO DE VIDA: Encontrar significado, propósito e direção na vida
+1. Relacionamentos e comunicação
+2. Saúde mental (ansiedade, estresse, depressão)
+3. Desenvolvimento pessoal (autoestima, confiança)
+4. Carreira e propósito de vida
+5. Finanças pessoais
+6. Técnicas de bem-estar (respiração, mindfulness)
 
-TÉCNICAS DISPONÍVEIS (pergunte antes de sugerir):
-- Respiração 4-7-8
-- Grounding 5-4-3-2-1
-- Reestruturação cognitiva
-- Mindfulness básico
-- Autocompaixão
-- Diário de gratidão
-- Visualização positiva
-- Definição de metas SMART
-- Análise de crenças limitantes
-- Técnica do observador
-
-Termine sempre com uma pergunta que incentive a continuidade do diálogo.`,
+Seja concisa, empática e sempre termine com uma pergunta.`,
       },
-      // Filtrar mensagens para incluir apenas role e content
       ...messages.map((msg: any) => ({
         role: msg.role,
         content: msg.content,
@@ -158,20 +208,20 @@ Termine sempre com uma pergunta que incentive a continuidade do diálogo.`,
     ]
 
     console.log("🤖 Enviando para GroqCloud...")
-    console.log("📋 Mensagens formatadas:", groqMessages.length)
 
-    // Configurar a requisição para o GroqCloud
+    // Configurar a requisição para o GroqCloud com modelo alternativo
     const requestOptions = {
       method: "POST",
       headers: {
         Authorization: `Bearer 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`,
         "Content-Type": "application/json",
+        Accept: "application/json",
       },
       body: JSON.stringify({
-        model: "llama3-8b-8192",
+        model: "llama3-70b-8192", // Modelo alternativo que pode ter menos rate limit
         messages: groqMessages,
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 800, // Reduzido para economizar tokens
         stream: false,
       }),
     }
@@ -180,45 +230,30 @@ Termine sempre com uma pergunta que incentive a continuidade do diálogo.`,
     const response = await fetchWithRetry(
       "https://api.groq.com/openai/v1/chat/completions",
       requestOptions,
-      3, // máximo de 3 retentativas
-      1000, // backoff inicial de 1 segundo
+      1, // Apenas 1 retry para evitar rate limits
+      10000, // 10 segundos de backoff inicial
     )
 
-    console.log("📡 Status GroqCloud:", response.status)
-
     const responseText = await response.text()
-    console.log("📄 Resposta bruta (primeiros 500 chars):", responseText.substring(0, 500))
+    console.log("📄 Resposta bruta (primeiros 300 chars):", responseText.substring(0, 300))
 
     let data
     try {
       data = JSON.parse(responseText)
     } catch (parseError) {
       console.error("❌ Erro ao fazer parse do JSON:", parseError)
-      console.log("📄 Resposta completa:", responseText)
       throw new Error("Resposta inválida do GroqCloud")
     }
 
-    console.log("✅ JSON parseado com sucesso")
-    console.log("🔍 Estrutura da resposta:", {
-      hasChoices: !!data.choices,
-      choicesLength: data.choices?.length,
-      firstChoice: data.choices?.[0] ? Object.keys(data.choices[0]) : null,
-      hasMessage: !!data.choices?.[0]?.message,
-      messageKeys: data.choices?.[0]?.message ? Object.keys(data.choices[0].message) : null,
-    })
-
-    // Extrair a mensagem corretamente
+    // Extrair a mensagem
     const assistantMessage = data.choices?.[0]?.message?.content
 
     if (!assistantMessage) {
       console.error("❌ Nenhuma mensagem encontrada na resposta")
-      console.log("📊 Dados completos:", JSON.stringify(data, null, 2))
       throw new Error("Resposta vazia do modelo")
     }
 
-    console.log("💬 Mensagem extraída com sucesso:")
-    console.log("📏 Tamanho:", assistantMessage.length, "caracteres")
-    console.log("📝 Início:", assistantMessage.substring(0, 150) + "...")
+    console.log("💬 Mensagem extraída com sucesso:", assistantMessage.length, "caracteres")
 
     return Response.json({
       message: assistantMessage,
@@ -226,40 +261,49 @@ Termine sempre com uma pergunta que incentive a continuidade do diálogo.`,
       metadata: {
         model: data.model,
         usage: data.usage,
-        id: data.id,
         provider: "GroqCloud",
       },
     })
   } catch (error) {
     console.error("❌ Erro na API:", error)
 
-    // Resposta de fallback inteligente
-    const fallbackMessage = `Olá! Sou a Sofia 💙
+    // Verificar se é erro de rate limit
+    const isRateLimit =
+      error instanceof Error &&
+      (error.message.includes("RATE_LIMIT_EXCEEDED") ||
+        error.message.includes("429") ||
+        error.message.includes("Rate limit"))
 
-Estou com dificuldades técnicas momentâneas, mas posso te ajudar com algumas orientações gerais:
+    if (isRateLimit) {
+      console.log("🔄 Rate limit detectado, usando fallback contextual...")
+    }
 
-**🧘 Técnica de Respiração Imediata:**
-1. Inspire lentamente por 4 segundos
-2. Segure a respiração por 7 segundos
-3. Expire completamente por 8 segundos
-4. Repita 3-4 vezes
+    // Obter mensagens para gerar fallback contextual
+    let contextualMessage = "Olá! Sou a Sofia 💙"
 
-**💡 Lembre-se:**
-- Você é mais resiliente do que imagina
-- Cada desafio é uma oportunidade de crescimento
-- Seus sentimentos são válidos e temporários
+    try {
+      const { messages } = await req.json()
+      if (messages && Array.isArray(messages)) {
+        contextualMessage = generateContextualFallback(messages)
+      }
+    } catch (parseError) {
+      console.log("⚠️ Erro ao parsear mensagens para fallback, usando mensagem padrão")
+    }
 
-**🌟 Reflexão:**
-O que você pode fazer agora mesmo para se sentir 1% melhor?
+    // Adicionar aviso sobre dificuldades técnicas apenas se não for rate limit
+    if (!isRateLimit) {
+      contextualMessage += `\n\n---\n⚠️ **Nota técnica:** Estou com algumas dificuldades de conexão, mas continuo aqui para te apoiar da melhor forma possível!`
+    }
 
-Tente enviar sua mensagem novamente em alguns instantes. Estou aqui para te apoiar! 🤗
-
-**Erro técnico:** ${error instanceof Error ? error.message : "Erro desconhecido"}`
-
-    return Response.json({
-      message: fallbackMessage,
-      success: false,
-      error: error instanceof Error ? error.message : "Erro desconhecido",
-    })
+    return Response.json(
+      {
+        message: contextualMessage,
+        success: false,
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+        fallback: true,
+        isRateLimit,
+      },
+      { status: 200 },
+    )
   }
 }
