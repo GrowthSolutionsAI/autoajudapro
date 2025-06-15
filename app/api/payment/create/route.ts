@@ -1,6 +1,6 @@
 export async function POST(req: Request) {
   try {
-    console.log("🛒 Iniciando criação de pagamento...")
+    console.log("🛒 Iniciando criação de pagamento PagBank PRODUÇÃO...")
 
     const body = await req.json()
     const { planId, amount, customerName, customerEmail } = body
@@ -8,18 +8,29 @@ export async function POST(req: Request) {
     console.log("📦 Dados recebidos:", { planId, amount, customerName, customerEmail })
 
     // Validar dados obrigatórios
-    if (!planId || !amount || !customerName) {
+    if (!planId || !amount || !customerName || !customerEmail) {
       return Response.json(
-        { success: false, message: "Dados obrigatórios: planId, amount, customerName" },
+        { success: false, message: "Dados obrigatórios: planId, amount, customerName, customerEmail" },
         { status: 400 },
       )
     }
 
-    // Configuração do PagBank
+    // Validar email
+    if (!customerEmail.includes("@")) {
+      return Response.json({ success: false, message: "Email inválido" }, { status: 400 })
+    }
+
+    // Configuração do PagBank para PRODUÇÃO
     const pagBankConfig = {
-      token: process.env.PAGSEGURO_TOKEN || "SANDBOX_TOKEN",
-      email: process.env.PAGSEGURO_EMAIL || "sandbox@email.com",
-      sandbox: true, // Sempre sandbox para testes
+      token: process.env.PAGSEGURO_TOKEN,
+      email: process.env.PAGSEGURO_EMAIL,
+      sandbox: process.env.NODE_ENV !== "production", // false em produção
+    }
+
+    // Verificar se temos credenciais de produção
+    if (!pagBankConfig.token || !pagBankConfig.email) {
+      console.error("❌ Credenciais PagBank não configuradas para produção")
+      return Response.json({ success: false, message: "Sistema de pagamento não configurado" }, { status: 500 })
     }
 
     // Mapear planos para valores corretos
@@ -31,53 +42,39 @@ export async function POST(req: Request) {
     }
 
     const finalAmount = planPrices[planId as keyof typeof planPrices] || amount
-    const reference = `autoajuda-${planId}-${Date.now()}`
+    const reference = `autoajuda-${planId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
-    console.log("💰 Valor final:", finalAmount, "Referência:", reference)
-
-    // Tentar criar pagamento no PagBank primeiro
-    try {
-      const pagBankPayment = await createPagBankPayment({
-        amount: finalAmount,
-        customerName,
-        customerEmail,
-        reference,
-        planId,
-      })
-
-      if (pagBankPayment.success) {
-        console.log("✅ Pagamento PagBank criado com sucesso")
-        return Response.json({
-          success: true,
-          paymentUrl: pagBankPayment.paymentUrl,
-          paymentCode: pagBankPayment.paymentCode,
-          reference: reference,
-          provider: "pagbank",
-          message: "Pagamento criado com sucesso",
-        })
-      }
-    } catch (pagBankError) {
-      console.warn("⚠️ PagBank falhou, usando simulador:", pagBankError)
+    // Validar valor do plano
+    if (Math.abs(finalAmount - amount) > 0.01) {
+      return Response.json({ success: false, message: "Valor do plano incorreto" }, { status: 400 })
     }
 
-    // Fallback para simulador se PagBank falhar
-    console.log("🔄 Usando sistema simulado...")
-    const simulatedPayment = await createSimulatedPayment({
+    console.log("💰 Criando pagamento:", { finalAmount, reference, sandbox: pagBankConfig.sandbox })
+
+    // Criar pagamento no PagBank
+    const pagBankPayment = await createPagBankPayment({
       amount: finalAmount,
       customerName,
       customerEmail,
       reference,
       planId,
+      config: pagBankConfig,
     })
 
-    return Response.json({
-      success: true,
-      paymentUrl: simulatedPayment.paymentUrl,
-      paymentCode: simulatedPayment.paymentCode,
-      reference: reference,
-      provider: "simulator",
-      message: "Pagamento criado (modo simulado)",
-    })
+    if (pagBankPayment.success) {
+      console.log("✅ Pagamento PagBank criado com sucesso")
+      return Response.json({
+        success: true,
+        paymentUrl: pagBankPayment.paymentUrl,
+        paymentCode: pagBankPayment.paymentCode,
+        reference: reference,
+        provider: "pagbank",
+        environment: pagBankConfig.sandbox ? "sandbox" : "production",
+        message: "Pagamento criado com sucesso",
+      })
+    } else {
+      throw new Error(pagBankPayment.error || "Falha ao criar pagamento")
+    }
   } catch (error) {
     console.error("❌ Erro ao criar pagamento:", error)
     return Response.json(
@@ -96,16 +93,12 @@ async function createPagBankPayment(data: {
   customerEmail: string
   reference: string
   planId: string
+  config: any
 }) {
-  const { amount, customerName, customerEmail, reference, planId } = data
+  const { amount, customerName, customerEmail, reference, planId, config } = data
 
-  // Configuração para sandbox do PagBank
-  const apiUrl = "https://sandbox.api.pagseguro.com/orders"
-  const token = process.env.PAGSEGURO_TOKEN
-
-  if (!token) {
-    throw new Error("Token do PagBank não configurado")
-  }
+  // URLs da API do PagBank
+  const apiUrl = config.sandbox ? "https://sandbox.api.pagseguro.com/orders" : "https://api.pagseguro.com/orders"
 
   const planNames = {
     daily: "Acesso Diário - AutoAjuda Pro",
@@ -114,12 +107,15 @@ async function createPagBankPayment(data: {
     mensal: "Acesso Mensal - AutoAjuda Pro",
   }
 
+  const planName = planNames[planId as keyof typeof planNames] || "Plano AutoAjuda Pro"
+
+  // Dados do pedido para PagBank
   const orderData = {
     reference_id: reference,
     customer: {
       name: customerName,
-      email: customerEmail || "cliente@exemplo.com",
-      tax_id: "12345678901", // CPF fictício para sandbox
+      email: customerEmail,
+      tax_id: "00000000000", // CPF será solicitado na tela de pagamento
       phones: [
         {
           country: "55",
@@ -132,72 +128,86 @@ async function createPagBankPayment(data: {
     items: [
       {
         reference_id: `item-${planId}`,
-        name: planNames[planId as keyof typeof planNames] || "Plano AutoAjuda Pro",
+        name: planName,
         quantity: 1,
         unit_amount: Math.round(amount * 100), // Converter para centavos
       },
     ],
-    qr_codes: [
+    charges: [
       {
+        reference_id: `charge-${reference}`,
+        description: planName,
         amount: {
           value: Math.round(amount * 100),
+          currency: "BRL",
         },
-        expiration_date: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 minutos
+        payment_method: {
+          type: "CREDIT_CARD",
+          installments: 1,
+          capture: true,
+          card: {
+            store: false,
+          },
+        },
       },
     ],
     notification_urls: [`${process.env.NEXT_PUBLIC_APP_URL}/api/payment/webhook`],
   }
 
-  console.log("📤 Enviando para PagBank:", JSON.stringify(orderData, null, 2))
-
-  const response = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
-    body: JSON.stringify(orderData),
+  console.log("📤 Enviando para PagBank:", {
+    url: apiUrl,
+    environment: config.sandbox ? "sandbox" : "production",
+    reference,
+    amount,
   })
 
-  const responseText = await response.text()
-  console.log("📥 Resposta PagBank:", response.status, responseText)
+  try {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.token}`,
+        Accept: "application/json",
+        "User-Agent": "AutoAjudaPro/1.0",
+      },
+      body: JSON.stringify(orderData),
+      signal: AbortSignal.timeout(30000), // 30 segundos timeout
+    })
 
-  if (!response.ok) {
-    throw new Error(`PagBank API Error: ${response.status} - ${responseText}`)
-  }
+    const responseText = await response.text()
+    console.log("📥 Resposta PagBank:", response.status, responseText.substring(0, 500))
 
-  const result = JSON.parse(responseText)
+    if (!response.ok) {
+      console.error("❌ Erro PagBank:", response.status, responseText)
+      return {
+        success: false,
+        error: `PagBank API Error: ${response.status} - ${responseText}`,
+      }
+    }
 
-  // Extrair URL de pagamento
-  const paymentUrl = result.links?.find((link: any) => link.rel === "SELF")?.href
-  const qrCodeUrl = result.qr_codes?.[0]?.links?.find((link: any) => link.rel === "SELF")?.href
+    const result = JSON.parse(responseText)
 
-  return {
-    success: true,
-    paymentUrl: paymentUrl || qrCodeUrl || `${process.env.NEXT_PUBLIC_APP_URL}/payment/pagbank?order=${result.id}`,
-    paymentCode: result.id,
-  }
-}
+    // Extrair URL de pagamento
+    const checkoutUrl = result.links?.find((link: any) => link.rel === "SELF")?.href
+    const paymentUrl = checkoutUrl || `${process.env.NEXT_PUBLIC_APP_URL}/payment/pagbank?order=${result.id}`
 
-async function createSimulatedPayment(data: {
-  amount: number
-  customerName: string
-  customerEmail: string
-  reference: string
-  planId: string
-}) {
-  const { amount, customerName, reference, planId } = data
+    console.log("✅ Pagamento criado:", {
+      orderId: result.id,
+      paymentUrl,
+      status: result.status,
+    })
 
-  // Simular criação de pagamento
-  const paymentCode = `SIM_${Date.now()}`
-  const paymentUrl = `${process.env.NEXT_PUBLIC_APP_URL}/payment/mock?code=${paymentCode}&amount=${amount}&plan=${planId}&ref=${reference}`
-
-  console.log("🎭 Pagamento simulado criado:", { paymentCode, paymentUrl })
-
-  return {
-    success: true,
-    paymentUrl,
-    paymentCode,
+    return {
+      success: true,
+      paymentUrl,
+      paymentCode: result.id,
+      orderId: result.id,
+    }
+  } catch (error) {
+    console.error("❌ Erro na requisição PagBank:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Erro de conexão com PagBank",
+    }
   }
 }
