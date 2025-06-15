@@ -3,16 +3,17 @@
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { X, CreditCard, Shield, CheckCircle, AlertCircle, Info, ExternalLink, Zap } from "lucide-react"
+import { X, CreditCard, Shield, CheckCircle, AlertCircle, Info, ExternalLink, Zap, Calendar, Crown } from "lucide-react"
 
 interface PaymentModalProps {
   isOpen: boolean
   onClose: () => void
   onPaymentSuccess: () => void
   userName: string
+  selectedPlan?: string
 }
 
-function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentModalProps) {
+function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPlan = "monthly" }: PaymentModalProps) {
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success" | "error">("idle")
   const [errorMessage, setErrorMessage] = useState("")
@@ -24,7 +25,16 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
   const [statusCheckCount, setStatusCheckCount] = useState(0)
   const [lastStatusMessage, setLastStatusMessage] = useState("")
 
-  const planPrice = 19.9
+  // Configuração dos planos
+  const planConfig = {
+    daily: { name: "Acesso Diário", price: 9.9, period: "dia", icon: Calendar },
+    weekly: { name: "Acesso Semanal", price: 29.9, period: "semana", icon: Zap },
+    monthly: { name: "Acesso Mensal", price: 79.9, period: "mês", icon: Crown },
+    mensal: { name: "Acesso Mensal", price: 79.9, period: "mês", icon: Crown }, // Compatibilidade
+  }
+
+  const currentPlan = planConfig[selectedPlan as keyof typeof planConfig] || planConfig.monthly
+  const IconComponent = currentPlan.icon
 
   // Limpar o intervalo quando o componente for desmontado
   useEffect(() => {
@@ -107,8 +117,8 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          planId: "mensal",
-          amount: planPrice,
+          planId: selectedPlan,
+          amount: currentPlan.price,
           customerName: userName || "Cliente AutoAjuda Pro",
           customerEmail: "cliente@exemplo.com",
         }),
@@ -131,6 +141,8 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
       // Mensagem baseada no provedor
       if (data.provider === "simulator") {
         setLastStatusMessage("Sistema de pagamento ativado - complete na nova aba")
+      } else if (data.provider === "pagbank") {
+        setLastStatusMessage("Complete o pagamento no PagBank - nova aba aberta")
       } else {
         setLastStatusMessage("Complete o pagamento na nova aba")
       }
@@ -171,10 +183,10 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
 
           <div className="text-center">
             <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-4 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-              <CreditCard className="h-8 w-8 text-white" />
+              <IconComponent className="h-8 w-8 text-white" />
             </div>
-            <CardTitle className="text-2xl font-bold text-gray-900">Continue sua jornada com a Sofia</CardTitle>
-            <p className="text-gray-600 mt-2">Você usou suas 5 mensagens gratuitas. Assine para continuar:</p>
+            <CardTitle className="text-2xl font-bold text-gray-900">{currentPlan.name}</CardTitle>
+            <p className="text-gray-600 mt-2">Continue sua jornada com a Sofia por apenas:</p>
           </div>
         </CardHeader>
 
@@ -184,14 +196,14 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
               <div className="p-6 rounded-xl border-2 border-blue-500 bg-blue-50">
                 <div className="text-center">
                   <span className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
-                    Oferta Especial
+                    Plano Selecionado
                   </span>
-                  <h3 className="font-bold text-xl text-gray-900 mt-3">Plano Mensal</h3>
+                  <h3 className="font-bold text-xl text-gray-900 mt-3">{currentPlan.name}</h3>
                   <div className="mt-2">
                     <span className="text-4xl font-bold text-gray-900">
-                      R$ {planPrice.toFixed(2).replace(".", ",")}
+                      R$ {currentPlan.price.toFixed(2).replace(".", ",")}
                     </span>
-                    <span className="text-gray-600">/mês</span>
+                    <span className="text-gray-600">/{currentPlan.period}</span>
                   </div>
                   <ul className="mt-4 space-y-2">
                     <li className="text-sm text-gray-700 flex items-center gap-2 justify-center">
@@ -216,8 +228,8 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
                     <Zap className="h-4 w-4 text-white" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-gray-900">Sistema de Pagamento Otimizado</h4>
-                    <p className="text-sm text-gray-700">Processamento rápido e seguro - PIX, Cartão e Boleto</p>
+                    <h4 className="font-semibold text-gray-900">Pagamento Seguro</h4>
+                    <p className="text-sm text-gray-700">PIX, Cartão de Crédito e Boleto disponíveis</p>
                   </div>
                 </div>
               </div>
@@ -244,14 +256,14 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <Zap className="h-5 w-5" />
-                    Pagar R$ {planPrice.toFixed(2).replace(".", ",")} - Acesso Imediato
+                    <CreditCard className="h-5 w-5" />
+                    Pagar R$ {currentPlan.price.toFixed(2).replace(".", ",")}
                   </div>
                 )}
               </Button>
 
               <p className="text-center text-xs text-gray-500">
-                Cancele a qualquer momento • Garantia de 7 dias • Suporte 24/7
+                Sem compromisso • Cancele quando quiser • Suporte 24/7
               </p>
             </>
           )}
@@ -269,18 +281,6 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
                     <Info className="h-4 w-4 text-blue-600" />
                     <p className="text-sm text-blue-700">{lastStatusMessage}</p>
                   </div>
-                </div>
-              )}
-
-              {paymentProvider === "simulator" && (
-                <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
-                  <div className="flex items-center gap-2 justify-center mb-2">
-                    <Zap className="h-4 w-4 text-green-600" />
-                    <span className="font-semibold text-green-900">Sistema Otimizado Ativo</span>
-                  </div>
-                  <p className="text-sm text-gray-700">
-                    Complete o pagamento na nova aba. Suporte a PIX, cartão de crédito e boleto bancário.
-                  </p>
                 </div>
               )}
 
@@ -309,12 +309,12 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName }: PaymentMo
                 <CheckCircle className="h-8 w-8 text-green-600" />
               </div>
               <h3 className="text-xl font-bold text-green-900 mb-2">🎉 Pagamento Confirmado!</h3>
-              <p className="text-green-700 mb-2">Parabéns! Agora você tem acesso completo à Sofia.</p>
+              <p className="text-green-700 mb-2">Seu {currentPlan.name} foi ativado com sucesso!</p>
               <div className="bg-green-50 rounded-lg p-3 mt-4">
                 <p className="text-sm text-green-800">
-                  ✅ Mensagens ilimitadas ativadas
-                  <br />✅ IA avançada liberada
-                  <br />✅ Suporte prioritário disponível
+                  ✅ Acesso premium ativado
+                  <br />✅ Mensagens ilimitadas liberadas
+                  <br />✅ IA avançada disponível
                 </p>
               </div>
               <p className="text-sm text-gray-600 mt-3">Redirecionando para o chat...</p>
