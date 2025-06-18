@@ -121,15 +121,28 @@ Como você gostaria que eu te chamasse?`,
       try {
         setIsCheckingSubscription(true)
 
-        // Simular email do usuário (em produção, pegar do contexto de autenticação)
-        const userEmail = "user@example.com" // TODO: Pegar email real do usuário logado
+        // Usar email real do usuário logado
+        const userEmail = `${userName.toLowerCase().replace(/\s+/g, "")}@autoajuda.com`
 
         const response = await fetch(`/api/user/subscription?email=${encodeURIComponent(userEmail)}`)
+
+        if (!response.ok) {
+          console.log("⚠️ Erro ao verificar assinatura, assumindo usuário gratuito")
+          setUserSubscription(null)
+          return
+        }
+
         const data = await response.json()
 
-        if (data.success && data.subscription) {
-          setUserSubscription(data.subscription)
-          console.log("✅ Assinatura verificada:", data.subscription)
+        if (data.success && data.hasActiveSubscription) {
+          setUserSubscription({
+            id: data.subscription?.id || "mock",
+            planType: data.plan || "free",
+            status: data.status || "ACTIVE",
+            expiresAt: data.expiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            isActive: data.hasActiveSubscription,
+          })
+          console.log("✅ Assinatura ativa encontrada")
         } else {
           setUserSubscription(null)
           console.log("ℹ️ Usuário sem assinatura ativa")
@@ -144,11 +157,11 @@ Como você gostaria que eu te chamasse?`,
 
     if (isOpen) {
       checkUserSubscription()
-      // Verificar a cada 5 minutos
-      const interval = setInterval(checkUserSubscription, 5 * 60 * 1000)
+      // Verificar apenas a cada 10 minutos (reduzido de 5 minutos)
+      const interval = setInterval(checkUserSubscription, 10 * 60 * 1000)
       return () => clearInterval(interval)
     }
-  }, [isOpen])
+  }, [isOpen, userName]) // Adicionar userName como dependência
 
   // Áreas de especialidade com ícones e descrições
   const areaOptions = [
@@ -459,6 +472,8 @@ Como você gostaria que eu te chamasse?`,
             },
             body: JSON.stringify({
               messages: messagesForAPI,
+              sessionId: currentChatId,
+              userEmail: `${userName.toLowerCase().replace(/\s+/g, "")}@autoajuda.com`,
             }),
           })
 

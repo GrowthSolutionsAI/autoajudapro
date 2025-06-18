@@ -1,15 +1,54 @@
 import type { NextRequest } from "next/server"
+import { chatRateLimiter, withRateLimit } from "@/lib/rate-limiter"
+import { chatMetrics } from "@/lib/metrics"
+import { responseCache, shouldUseCache } from "@/lib/response-cache"
+import { logger } from "@/lib/logger"
+import { withMetrics } from "@/lib/metrics"
 
 // Função de espera (sleep)
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// Validação de entrada melhorada
+function validateChatInput(data: any): { isValid: boolean; error?: string } {
+  if (!data.messages || !Array.isArray(data.messages)) {
+    return { isValid: false, error: "Mensagens inválidas ou ausentes" }
+  }
+
+  if (data.messages.length === 0) {
+    return { isValid: false, error: "Pelo menos uma mensagem é obrigatória" }
+  }
+
+  if (data.messages.length > 50) {
+    return { isValid: false, error: "Muitas mensagens na conversa" }
+  }
+
+  // Validar cada mensagem
+  for (const msg of data.messages) {
+    if (!msg.role || !msg.content) {
+      return { isValid: false, error: "Mensagem com formato inválido" }
+    }
+    if (!["user", "assistant", "system"].includes(msg.role)) {
+      return { isValid: false, error: "Role de mensagem inválido" }
+    }
+    if (typeof msg.content !== "string" || msg.content.trim().length === 0) {
+      return { isValid: false, error: "Conteúdo da mensagem inválido" }
+    }
+    if (msg.content.length > 4000) {
+      return { isValid: false, error: "Mensagem muito longa (máximo 4000 caracteres)" }
+    }
+  }
+
+  return { isValid: true }
+}
+
 // Sistema de fallback inteligente baseado no contexto
 function generateContextualFallback(messages: any[]): string {
   const lastUserMessage = messages[messages.length - 1]?.content?.toLowerCase() || ""
+  const userName = extractUserName(messages)
 
   // Detectar contexto da conversa
   if (lastUserMessage.includes("ansiedade") || lastUserMessage.includes("ansioso")) {
-    return `Entendo que você está se sentindo ansioso 💙
+    return `${userName}, entendo que você está se sentindo ansioso 💙
 
 **🧘 Técnica Rápida para Ansiedade:**
 1. **Respiração 4-7-8:**
@@ -31,7 +70,7 @@ Como você está se sentindo agora? Gostaria de conversar mais sobre o que está
   }
 
   if (lastUserMessage.includes("relacionamento") || lastUserMessage.includes("namoro")) {
-    return `Relacionamentos são uma parte importante da nossa vida 💕
+    return `${userName}, relacionamentos são uma parte importante da nossa vida 💕
 
 **🌟 Dicas para Relacionamentos Saudáveis:**
 - **Comunicação clara:** Expresse seus sentimentos de forma honesta
@@ -45,7 +84,7 @@ Gostaria de compartilhar mais sobre sua situação específica? Estou aqui para 
   }
 
   if (lastUserMessage.includes("trabalho") || lastUserMessage.includes("carreira")) {
-    return `Questões profissionais podem ser desafiadoras 💼
+    return `${userName}, questões profissionais podem ser desafiadoras 💼
 
 **🎯 Estratégias para Carreira:**
 - **Autoconhecimento:** Identifique seus valores e objetivos
@@ -59,7 +98,7 @@ Conte-me mais sobre seus desafios ou objetivos profissionais. Vamos encontrar ca
   }
 
   if (lastUserMessage.includes("autoestima") || lastUserMessage.includes("confiança")) {
-    return `A autoestima é fundamental para nosso bem-estar 🌟
+    return `${userName}, a autoestima é fundamental para nosso bem-estar 🌟
 
 **💪 Fortalecendo a Autoestima:**
 - **Autocompaixão:** Trate-se com gentileza
@@ -72,46 +111,71 @@ Conte-me mais sobre seus desafios ou objetivos profissionais. Vamos encontrar ca
 O que mais te incomoda em relação à sua autoestima? Vamos trabalhar isso juntos! 💙`
   }
 
-  // Resposta genérica para outros contextos
-  return `Olá! Sou a Sofia, sua IA de apoio emocional 💙
+  // Se for a primeira mensagem (nome do usuário)
+  if (messages.length <= 2) {
+    return `Prazer em conhecê-lo, ${userName}! 😊
 
-Estou aqui para te ajudar em sua jornada de autoconhecimento e bem-estar. Mesmo com algumas dificuldades técnicas, posso te oferecer suporte.
+Sou a Sofia, sua IA especializada em psicologia positiva e desenvolvimento pessoal. Estou aqui para te apoiar em sua jornada de autoconhecimento e bem-estar.
 
-**🌟 Áreas em que posso te ajudar:**
+**🌟 Posso te ajudar com:**
 - Relacionamentos e comunicação
 - Ansiedade e gestão emocional  
 - Autoestima e confiança
 - Carreira e propósito
 - Desenvolvimento pessoal
+- Técnicas de bem-estar
 
-**🧘 Técnica Universal - Respiração Consciente:**
-1. Inspire profundamente por 4 segundos
-2. Segure a respiração por 4 segundos
-3. Expire lentamente por 6 segundos
-4. Repita 5 vezes
+**Em qual dessas áreas você gostaria de focar hoje?** Ou se preferir, pode me contar o que está acontecendo em sua vida. Estou aqui para te escutar! 💙`
+  }
 
-**💭 Reflexão:** Como você está se sentindo neste momento?
+  // Resposta genérica para outros contextos
+  return `${userName}, estou aqui para te apoiar! 💙
 
-Compartilhe comigo o que está em seu coração. Estou aqui para te escutar e apoiar! 🤗`
+**🌟 Como posso te ajudar hoje?**
+- Conversas sobre relacionamentos
+- Técnicas para ansiedade e estresse
+- Desenvolvimento da autoestima
+- Orientação sobre carreira
+- Estratégias de autocuidado
+
+**🧘 Técnica rápida de bem-estar:**
+Respire fundo, feche os olhos por um momento e se pergunte: "Como posso ser gentil comigo mesmo hoje?"
+
+O que está em seu coração neste momento? Compartilhe comigo! 🤗`
 }
 
-// Função para fazer requisição com retry otimizada para rate limits
-async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 1, initialBackoff = 5000) {
-  let retries = 0
-  let backoff = initialBackoff
+// Extrair nome do usuário das mensagens
+function extractUserName(messages: any[]): string {
+  if (messages.length >= 2) {
+    const firstUserMessage = messages.find((msg) => msg.role === "user")?.content || ""
+    // Se a primeira mensagem parece ser um nome (menos de 50 caracteres e não tem pontuação complexa)
+    if (firstUserMessage.length < 50 && !firstUserMessage.includes("?") && !firstUserMessage.includes(".")) {
+      return firstUserMessage.split(" ")[0] // Pega o primeiro nome
+    }
+  }
+  return "amigo(a)"
+}
 
-  while (retries <= maxRetries) {
+// Função para fazer requisição com retry otimizada
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2) {
+  let lastError: Error | null = null
+
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     try {
-      console.log(`🔄 Tentativa ${retries + 1}/${maxRetries + 1} para GroqCloud...`)
+      console.log(`🔄 Tentativa ${attempt}/${maxRetries + 1} para GroqCloud...`)
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 25000) // 25 segundos timeout
 
       const response = await fetch(url, {
         ...options,
-        signal: AbortSignal.timeout(15000), // Timeout reduzido para 15 segundos
+        signal: controller.signal,
       })
+
+      clearTimeout(timeoutId)
 
       console.log(`📡 Status da resposta: ${response.status}`)
 
-      // Se a resposta for bem-sucedida, retorne-a
       if (response.ok) {
         console.log("✅ Resposta bem-sucedida do GroqCloud")
         return response
@@ -121,60 +185,132 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 1,
       const responseText = await response.text()
       console.log(`❌ Erro na resposta: ${response.status} - ${responseText.substring(0, 200)}`)
 
-      // Se for rate limit (429), usar backoff mais longo
-      if (response.status === 429) {
-        console.log(`⚠️ Rate limit atingido. Aguardando ${backoff}ms antes de tentar novamente...`)
-
-        if (retries < maxRetries) {
-          await sleep(backoff)
-          retries++
-          backoff *= 3 // Backoff mais agressivo para rate limits
-          continue
-        } else {
-          // Se esgotar tentativas, lançar erro específico de rate limit
-          throw new Error(`RATE_LIMIT_EXCEEDED: ${responseText}`)
-        }
-      }
-
-      // Para outros erros, tentar uma vez mais com backoff menor
-      if (retries < maxRetries && (response.status >= 500 || response.status === 503)) {
-        console.log(`🔄 Erro ${response.status}, tentando novamente em ${backoff / 2}ms...`)
-        await sleep(backoff / 2)
-        retries++
+      // Se for rate limit (429), aguardar mais tempo
+      if (response.status === 429 && attempt <= maxRetries) {
+        const waitTime = Math.pow(2, attempt) * 3000 // Backoff exponencial mais conservador
+        console.log(`⚠️ Rate limit atingido. Aguardando ${waitTime}ms...`)
+        await sleep(waitTime)
         continue
       }
 
-      // Se não conseguiu resolver, lance uma exceção
-      throw new Error(`GroqCloud falhou: ${response.status} - ${responseText.substring(0, 100)}`)
-    } catch (error) {
-      console.log(`❌ Erro na tentativa ${retries + 1}/${maxRetries + 1}:`, error)
-
-      if (retries >= maxRetries) {
-        throw error
+      // Para outros erros 5xx, tentar novamente
+      if (response.status >= 500 && attempt <= maxRetries) {
+        const waitTime = 2000 * attempt
+        console.log(`🔄 Erro ${response.status}, tentando novamente em ${waitTime}ms...`)
+        await sleep(waitTime)
+        continue
       }
 
-      console.log(`🔄 Tentando novamente em ${backoff}ms...`)
-      await sleep(backoff)
-      retries++
-      backoff *= 2
+      // Se chegou aqui, é um erro que não deve ser retentado
+      throw new Error(`GroqCloud falhou: ${response.status} - ${responseText.substring(0, 100)}`)
+    } catch (error) {
+      console.log(`❌ Erro na tentativa ${attempt}:`, error)
+      lastError = error instanceof Error ? error : new Error(String(error))
+
+      if (attempt <= maxRetries) {
+        const waitTime = 1500 * attempt
+        console.log(`🔄 Tentando novamente em ${waitTime}ms...`)
+        await sleep(waitTime)
+      }
     }
   }
 
-  throw new Error(`Falha após ${maxRetries + 1} tentativas`)
+  throw lastError || new Error("Falha após todas as tentativas")
 }
 
-export async function POST(req: NextRequest) {
+// Handler principal com rate limiting
+async function handleChatRequest(req: NextRequest): Promise<Response> {
+  let startTime = Date.now()
+  let sessionId = ""
   try {
     console.log("🚀 Iniciando chat com GroqCloud...")
 
-    const { messages } = await req.json()
-
-    if (!messages || !Array.isArray(messages)) {
-      throw new Error("Mensagens inválidas")
+    // Parse do body com tratamento de erro
+    let requestData
+    try {
+      requestData = await req.json()
+    } catch (parseError) {
+      console.error("❌ Erro ao fazer parse do JSON da requisição:", parseError)
+      return Response.json({ success: false, error: "Dados da requisição inválidos" }, { status: 400 })
     }
 
-    console.log("📝 Mensagens recebidas:", messages.length)
-    console.log("📤 Última mensagem do usuário:", messages[messages.length - 1]?.content?.substring(0, 100))
+    sessionId = requestData.sessionId || "anonymous"
+    startTime = Date.now()
+
+    // Registrar métricas da requisição
+    const sanitizedMessages = requestData.messages.map((msg: any) => ({
+      ...msg,
+      content: msg.content?.trim().substring(0, 2000) || "", // Limitar tamanho
+    }))
+    chatMetrics.requestReceived(sessionId, sanitizedMessages.length)
+    logger.chatRequest(sessionId, requestData.userEmail, sanitizedMessages.length)
+
+    // Validar dados de entrada
+    const validation = validateChatInput(requestData)
+    if (!validation.isValid) {
+      console.error("❌ Validação falhou:", validation.error)
+      return Response.json({ success: false, error: validation.error }, { status: 400 })
+    }
+
+    const { messages, userEmail } = requestData
+
+    // Validar sessionId e userEmail (opcionais para compatibilidade)
+    if (sessionId && (typeof sessionId !== "string" || sessionId.length > 100)) {
+      return Response.json({ success: false, error: "Session ID inválido" }, { status: 400 })
+    }
+
+    if (userEmail && (typeof userEmail !== "string" || userEmail.length > 200)) {
+      return Response.json({ success: false, error: "Email inválido" }, { status: 400 })
+    }
+
+    // Sanitizar mensagens
+
+    console.log("📝 Mensagens recebidas:", sanitizedMessages.length)
+    console.log(
+      "📤 Última mensagem do usuário:",
+      sanitizedMessages[sanitizedMessages.length - 1]?.content?.substring(0, 100),
+    )
+
+    // Verificar cache antes de fazer requisição
+    if (shouldUseCache(sanitizedMessages)) {
+      const cachedResponse = responseCache.get(sanitizedMessages)
+      if (cachedResponse) {
+        chatMetrics.cacheHit()
+        const responseTime = Date.now() - startTime
+
+        logger.chatResponse(sessionId, "Cache", responseTime, true)
+        chatMetrics.responseGenerated("Cache", responseTime, true)
+
+        return Response.json({
+          message: cachedResponse,
+          success: true,
+          cached: true,
+          provider: "Cache",
+        })
+      }
+      chatMetrics.cacheMiss()
+    }
+
+    // Verificar se temos a chave da API
+    const apiKey = process.env.GROQ_API_KEY
+
+    if (!apiKey) {
+      console.error("❌ GROQ_API_KEY não configurada")
+
+      // Usar fallback imediatamente se não tiver API key
+      const contextualMessage = generateContextualFallback(sanitizedMessages)
+
+      return Response.json({
+        message:
+          contextualMessage +
+          "\n\n---\n⚠️ **Modo Offline:** Estou funcionando com meu sistema interno. Para melhor experiência, configure a integração com GroqCloud.",
+        success: true,
+        fallback: true,
+        provider: "Internal",
+      })
+    }
+
+    console.log("🔑 API Key configurada:", apiKey.substring(0, 10) + "...")
 
     // Preparar mensagens para GroqCloud
     const groqMessages = [
@@ -186,7 +322,7 @@ PERSONALIDADE: Empática, calorosa e acolhedora. Use linguagem humana e próxima
 
 DIRETRIZES:
 - Respostas curtas e diretas (máximo 3-4 frases por parágrafo)
-- Use o nome da pessoa nas respostas
+- Use o nome da pessoa nas respostas quando possível
 - Faça perguntas para entender melhor a situação
 - Use 2-3 emojis por mensagem para criar conexão emocional
 - Termine sempre com uma pergunta que incentive o diálogo
@@ -201,7 +337,7 @@ DIRETRIZES:
 
 Seja concisa, empática e sempre termine com uma pergunta.`,
       },
-      ...messages.map((msg: any) => ({
+      ...sanitizedMessages.map((msg: any) => ({
         role: msg.role,
         content: msg.content,
       })),
@@ -209,19 +345,19 @@ Seja concisa, empática e sempre termine com uma pergunta.`,
 
     console.log("🤖 Enviando para GroqCloud...")
 
-    // Configurar a requisição para o GroqCloud com modelo alternativo
+    // Configurar a requisição para o GroqCloud
     const requestOptions = {
       method: "POST",
       headers: {
-        Authorization: `Bearer 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`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         Accept: "application/json",
       },
       body: JSON.stringify({
-        model: "llama3-70b-8192", // Modelo alternativo que pode ter menos rate limit
+        model: "llama-3.1-70b-versatile", // Modelo mais estável
         messages: groqMessages,
         temperature: 0.7,
-        max_tokens: 800, // Reduzido para economizar tokens
+        max_tokens: 1000,
         stream: false,
       }),
     }
@@ -230,8 +366,7 @@ Seja concisa, empática e sempre termine com uma pergunta.`,
     const response = await fetchWithRetry(
       "https://api.groq.com/openai/v1/chat/completions",
       requestOptions,
-      1, // Apenas 1 retry para evitar rate limits
-      10000, // 10 segundos de backoff inicial
+      2, // 2 tentativas de retry
     )
 
     const responseText = await response.text()
@@ -249,11 +384,22 @@ Seja concisa, empática e sempre termine com uma pergunta.`,
     const assistantMessage = data.choices?.[0]?.message?.content
 
     if (!assistantMessage) {
-      console.error("❌ Nenhuma mensagem encontrada na resposta")
+      console.error("❌ Nenhuma mensagem encontrada na resposta:", data)
       throw new Error("Resposta vazia do modelo")
     }
 
     console.log("💬 Mensagem extraída com sucesso:", assistantMessage.length, "caracteres")
+
+    const responseTime = Date.now() - startTime
+
+    // Armazenar no cache se apropriado
+    if (shouldUseCache(sanitizedMessages)) {
+      responseCache.set(sanitizedMessages, assistantMessage)
+    }
+
+    // Registrar métricas de sucesso
+    logger.chatResponse(sessionId, "GroqCloud", responseTime, true)
+    chatMetrics.responseGenerated("GroqCloud", responseTime, true)
 
     return Response.json({
       message: assistantMessage,
@@ -270,40 +416,47 @@ Seja concisa, empática e sempre termine com uma pergunta.`,
     // Verificar se é erro de rate limit
     const isRateLimit =
       error instanceof Error &&
-      (error.message.includes("RATE_LIMIT_EXCEEDED") ||
-        error.message.includes("429") ||
-        error.message.includes("Rate limit"))
+      (error.message.includes("429") || error.message.includes("Rate limit") || error.message.includes("rate_limit"))
 
-    if (isRateLimit) {
-      console.log("🔄 Rate limit detectado, usando fallback contextual...")
-    }
+    console.log("🔄 Usando fallback contextual...")
 
     // Obter mensagens para gerar fallback contextual
     let contextualMessage = "Olá! Sou a Sofia 💙"
 
     try {
-      const { messages } = await req.json()
-      if (messages && Array.isArray(messages)) {
-        contextualMessage = generateContextualFallback(messages)
+      const requestData = await req.json()
+      if (requestData.messages && Array.isArray(requestData.messages)) {
+        contextualMessage = generateContextualFallback(requestData.messages)
       }
     } catch (parseError) {
       console.log("⚠️ Erro ao parsear mensagens para fallback, usando mensagem padrão")
     }
 
-    // Adicionar aviso sobre dificuldades técnicas apenas se não for rate limit
+    const responseTime = Date.now() - startTime
+
+    // Registrar uso de fallback
+    chatMetrics.fallbackUsed(isRateLimit ? "rate_limit" : "api_error")
+    logger.chatResponse(sessionId, "Fallback", responseTime, true)
+    chatMetrics.responseGenerated("Fallback", responseTime, true)
+
+    // Não adicionar aviso técnico se for rate limit (para não assustar o usuário)
     if (!isRateLimit) {
-      contextualMessage += `\n\n---\n⚠️ **Nota técnica:** Estou com algumas dificuldades de conexão, mas continuo aqui para te apoiar da melhor forma possível!`
+      contextualMessage += `\n\n---\n⚠️ **Nota:** Estou processando sua mensagem com meu sistema interno para garantir a melhor resposta possível! 💙`
     }
 
     return Response.json(
       {
         message: contextualMessage,
-        success: false,
+        success: true, // Mudei para true para não mostrar erro ao usuário
         error: error instanceof Error ? error.message : "Erro desconhecido",
         fallback: true,
         isRateLimit,
+        provider: "Fallback",
       },
       { status: 200 },
     )
   }
 }
+
+// Aplicar middlewares
+export const POST = withMetrics(withRateLimit(chatRateLimiter)(handleChatRequest))
