@@ -20,7 +20,6 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
   const [paymentUrl, setPaymentUrl] = useState("")
   const [paymentCode, setPaymentCode] = useState("")
   const [paymentReference, setPaymentReference] = useState("")
-  const [paymentProvider, setPaymentProvider] = useState("")
   const [checkStatusInterval, setCheckStatusInterval] = useState<NodeJS.Timeout | null>(null)
   const [statusCheckCount, setStatusCheckCount] = useState(0)
   const [lastStatusMessage, setLastStatusMessage] = useState("")
@@ -47,16 +46,13 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
 
   // Verificar o status do pagamento periodicamente
   const startCheckingPaymentStatus = useCallback(
-    (code: string, reference: string, provider: string) => {
+    (code: string, reference: string) => {
       if (checkStatusInterval) {
         clearInterval(checkStatusInterval)
       }
 
       setStatusCheckCount(0)
       setLastStatusMessage("Aguardando confirmação do pagamento...")
-
-      // Frequência baseada no provedor
-      const checkInterval = provider === "simulator" ? 5000 : 10000
 
       const interval = setInterval(async () => {
         try {
@@ -66,7 +62,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
           console.error("❌ Erro na verificação:", error)
           setLastStatusMessage("Verificando status...")
         }
-      }, checkInterval)
+      }, 10000) // Verificar a cada 10 segundos
 
       setCheckStatusInterval(interval)
 
@@ -84,7 +80,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
           if (data.success) {
             setLastStatusMessage(data.statusText || "Verificando...")
 
-            if (data.status === "PAID" || data.status === "AVAILABLE") {
+            if (data.status === "PAID" || data.status === "APPROVED") {
               if (checkStatusInterval) clearInterval(checkStatusInterval)
               setPaymentStatus("success")
               setLastStatusMessage("Pagamento confirmado!")
@@ -92,10 +88,10 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
                 onPaymentSuccess()
                 onClose()
               }, 2000)
-            } else if (data.status === "CANCELLED") {
+            } else if (data.status === "CANCELLED" || data.status === "REJECTED") {
               if (checkStatusInterval) clearInterval(checkStatusInterval)
               setPaymentStatus("error")
-              setErrorMessage("Pagamento cancelado")
+              setErrorMessage("Pagamento cancelado ou rejeitado")
             }
           }
         } catch (error) {
@@ -120,7 +116,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
           planId: selectedPlan,
           amount: currentPlan.price,
           customerName: userName || "Cliente AutoAjuda Pro",
-          customerEmail: "cliente@exemplo.com",
+          customerEmail: "cliente@exemplo.com", // TODO: Pegar email real do usuário
         }),
       })
 
@@ -133,22 +129,14 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
       setPaymentUrl(data.paymentUrl)
       setPaymentCode(data.paymentCode)
       setPaymentReference(data.reference || "")
-      setPaymentProvider(data.provider || "unknown")
 
       // Abrir página de pagamento
       window.open(data.paymentUrl, "_blank")
 
-      // Mensagem baseada no provedor
-      if (data.provider === "simulator") {
-        setLastStatusMessage("Sistema de pagamento ativado - complete na nova aba")
-      } else if (data.provider === "pagbank") {
-        setLastStatusMessage("Complete o pagamento no PagBank - nova aba aberta")
-      } else {
-        setLastStatusMessage("Complete o pagamento na nova aba")
-      }
+      setLastStatusMessage("Complete o pagamento no PagBank - nova aba aberta")
 
       // Iniciar verificação
-      startCheckingPaymentStatus(data.paymentCode, data.reference || "", data.provider || "unknown")
+      startCheckingPaymentStatus(data.paymentCode, data.reference || "")
     } catch (error) {
       console.error("❌ Erro:", error)
       setPaymentStatus("error")
@@ -212,7 +200,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
                     </li>
                     <li className="text-sm text-gray-700 flex items-center gap-2 justify-center">
                       <CheckCircle className="h-4 w-4 text-green-500" />
-                      IA avançada (Claude Sonnet)
+                      IA avançada (Groq)
                     </li>
                     <li className="text-sm text-gray-700 flex items-center gap-2 justify-center">
                       <CheckCircle className="h-4 w-4 text-green-500" />
@@ -225,21 +213,11 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
               <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl p-4">
                 <div className="flex items-center gap-3">
                   <div className="bg-gradient-to-r from-green-500 to-blue-500 p-2 rounded-full">
-                    <Zap className="h-4 w-4 text-white" />
+                    <Shield className="h-4 w-4 text-white" />
                   </div>
                   <div>
                     <h4 className="font-semibold text-gray-900">Pagamento Seguro</h4>
-                    <p className="text-sm text-gray-700">PIX, Cartão de Crédito e Boleto disponíveis</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                <div className="flex items-center gap-3">
-                  <Shield className="h-6 w-6 text-green-600" />
-                  <div>
-                    <h4 className="font-semibold text-green-900">100% Seguro</h4>
-                    <p className="text-sm text-green-700">Criptografia SSL e proteção de dados garantida</p>
+                    <p className="text-sm text-gray-700">PIX, Cartão de Crédito e Boleto via PagBank</p>
                   </div>
                 </div>
               </div>
@@ -285,8 +263,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
               )}
 
               <p className="text-xs text-gray-400 mt-4">
-                Verificações: {statusCheckCount} • Última verificação há {paymentProvider === "simulator" ? "5" : "10"}{" "}
-                segundos
+                Verificações: {statusCheckCount} • Última verificação há 10 segundos
               </p>
 
               {paymentUrl && (
