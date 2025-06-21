@@ -1,20 +1,66 @@
-// Webhook principal - redireciona para Banco Inter
-export async function POST(req: Request) {
-  try {
-    console.log("🔔 Webhook recebido - redirecionando para Banco Inter")
+import { type NextRequest, NextResponse } from "next/server"
 
-    // Redirecionar todos os webhooks para Banco Inter
-    const bancoInterWebhook = await import("./banco-inter/route")
-    return bancoInterWebhook.POST(req)
+export async function POST(req: NextRequest) {
+  try {
+    console.log("🔔 Webhook recebido - processando...")
+
+    const body = await req.json()
+    const headers = Object.fromEntries(req.headers.entries())
+
+    console.log("📥 Webhook dados:", {
+      headers: headers,
+      body: body,
+      timestamp: new Date().toISOString(),
+    })
+
+    // Verificar se é webhook do Banco Inter
+    if (headers["user-agent"]?.includes("Inter") || body.pix) {
+      console.log("🏦 Webhook Banco Inter detectado")
+      return await handleBancoInterWebhook(body)
+    }
+
+    // Verificar se é webhook do PagBank
+    if (body.id || body.charges || body.qr_codes) {
+      console.log("💳 Webhook PagBank detectado")
+      return await handlePagBankWebhook(body)
+    }
+
+    // Webhook genérico
+    console.log("📱 Webhook genérico")
+    return await handleGenericWebhook(body)
   } catch (error) {
-    console.error("❌ Erro no webhook principal:", error)
-    return Response.json(
+    console.error("❌ Erro no webhook:", error)
+    return NextResponse.json(
       {
         success: false,
         message: error instanceof Error ? error.message : "Erro interno",
       },
       { status: 500 },
     )
+  }
+}
+
+async function handleBancoInterWebhook(data: any) {
+  try {
+    console.log("🏦 Processando webhook Banco Inter:", data)
+
+    const { pix, txid } = data
+
+    if (pix && pix.length > 0) {
+      for (const pixData of pix) {
+        await processPixPayment({
+          txid: txid || pixData.txid,
+          valor: pixData.valor,
+          horario: pixData.horario,
+          infoPagador: pixData.infoPagador,
+        })
+      }
+    }
+
+    return NextResponse.json({ success: true, message: "Webhook Banco Inter processado" })
+  } catch (error) {
+    console.error("❌ Erro webhook Banco Inter:", error)
+    return NextResponse.json({ success: false, message: "Erro no processamento" }, { status: 500 })
   }
 }
 
@@ -56,10 +102,51 @@ async function handlePagBankWebhook(data: any) {
       })
     }
 
-    return Response.json({ success: true, message: "Webhook PagBank processado com sucesso" })
+    return NextResponse.json({ success: true, message: "Webhook PagBank processado com sucesso" })
   } catch (error) {
     console.error("❌ Erro ao processar webhook PagBank:", error)
-    return Response.json({ success: false, message: "Erro no processamento" }, { status: 500 })
+    return NextResponse.json({ success: false, message: "Erro no processamento" }, { status: 500 })
+  }
+}
+
+async function handleGenericWebhook(data: any) {
+  console.log("📱 Processando webhook genérico:", data)
+  return NextResponse.json({ success: true, message: "Webhook genérico processado" })
+}
+
+async function processPixPayment(pixData: any) {
+  console.log("💰 Processando pagamento PIX:", pixData)
+
+  // Extrair informações do pagamento
+  const { txid, valor, horario, infoPagador } = pixData
+
+  // Atualizar status do pagamento
+  await updatePaymentStatus({
+    txid,
+    status: "PAID",
+    amount: Number.parseFloat(valor),
+    paidAt: horario,
+    customer: infoPagador,
+  })
+
+  // Ativar assinatura do usuário
+  if (infoPagador?.email) {
+    const planType = extractPlanFromReference(txid)
+    await activateUserSubscription({
+      email: infoPagador.email,
+      txid,
+      amount: Number.parseFloat(valor),
+    })
+
+    // Enviar email de confirmação
+    await sendPaymentConfirmationEmail({
+      email: infoPagador.email,
+      name: infoPagador.nome || "Cliente",
+      planType: planType,
+      amount: Number.parseFloat(valor),
+      reference: txid,
+      paymentId: txid,
+    })
   }
 }
 
@@ -81,110 +168,58 @@ async function processPaymentUpdate(paymentData: {
     metodo: method,
   })
 
-  // Mapeamento de status do PagBank
-  const statusMapping: { [key: string]: { status: string; description: string } } = {
-    PAID: { status: "APPROVED", description: "Pagamento aprovado" },
-    AUTHORIZED: { status: "APPROVED", description: "Pagamento autorizado" },
-    DECLINED: { status: "REJECTED", description: "Pagamento recusado" },
-    CANCELED: { status: "CANCELLED", description: "Pagamento cancelado" },
-    EXPIRED: { status: "EXPIRED", description: "Pagamento expirado" },
-    WAITING: { status: "PENDING", description: "Aguardando pagamento" },
-    IN_ANALYSIS: { status: "PENDING", description: "Em análise" },
+  // Mapeamento de status
+  const statusMapping: { [key: string]: string } = {
+    PAID: "APPROVED",
+    AUTHORIZED: "APPROVED",
+    DECLINED: "REJECTED",
+    CANCELED: "CANCELLED",
+    EXPIRED: "EXPIRED",
+    WAITING: "PENDING",
+    IN_ANALYSIS: "PENDING",
   }
 
-  const mappedStatus = statusMapping[status] || { status: "UNKNOWN", description: "Status desconhecido" }
+  const mappedStatus = statusMapping[status] || "UNKNOWN"
 
-  console.log(`📊 Status mapeado: ${status} -> ${mappedStatus.status} (${mappedStatus.description})`)
-
-  // Atualizar status no "banco de dados"
-  await updateOrderStatus({
+  // Atualizar no "banco de dados"
+  await updatePaymentStatus({
     paymentId,
     reference,
-    status: mappedStatus.status,
+    status: mappedStatus,
     amount,
     method,
-    updatedAt: new Date().toISOString(),
   })
 
-  // Se foi aprovado, ativar acesso do usuário
-  if (mappedStatus.status === "APPROVED") {
-    console.log("✅ Pagamento APROVADO - Ativando acesso do usuário")
-
+  // Se aprovado, ativar usuário
+  if (mappedStatus === "APPROVED" && customer?.email) {
     const planType = extractPlanFromReference(reference)
-    const customerEmail = customer?.email
 
-    if (customerEmail) {
-      await activateUserSubscription({
-        email: customerEmail,
-        planType,
-        amount,
-        reference,
-        paymentId,
-        method,
-      })
+    await activateUserSubscription({
+      email: customer.email,
+      paymentId,
+      amount,
+    })
 
-      // Enviar email de confirmação
-      await sendPaymentConfirmationEmail({
-        email: customerEmail,
-        name: customer?.name || "Cliente",
-        planType,
-        amount,
-        reference,
-        paymentId,
-      })
-    }
-  } else if (mappedStatus.status === "REJECTED") {
-    console.log("❌ Pagamento REJEITADO")
-    // TODO: Notificar usuário sobre rejeição
+    // Enviar email de confirmação
+    await sendPaymentConfirmationEmail({
+      email: customer.email,
+      name: customer.name || "Cliente",
+      planType: planType,
+      amount,
+      reference,
+      paymentId,
+    })
   }
 }
 
-async function activateUserSubscription(data: {
-  email: string
-  planType: string
-  amount: number
-  reference: string
-  paymentId: string
-  method: string
-}) {
-  const { email, planType, amount, reference, paymentId, method } = data
+async function updatePaymentStatus(data: any) {
+  console.log("📝 Atualizando status do pagamento:", data)
+  // TODO: Implementar atualização no banco de dados
+}
 
-  // Calcular duração do plano
-  const planDurations: { [key: string]: number } = {
-    daily: 1,
-    weekly: 7,
-    monthly: 30,
-    mensal: 30,
-  }
-
-  const duration = planDurations[planType] || 30
-  const expiresAt = new Date(Date.now() + duration * 24 * 60 * 60 * 1000)
-
-  console.log("🔓 Ativando assinatura:", {
-    email,
-    plano: planType,
-    duracao: `${duration} dias`,
-    expira: expiresAt.toISOString(),
-    valor: amount,
-    metodo: method,
-  })
-
-  // TODO: Salvar no banco de dados real
-  const subscriptionData = {
-    email,
-    planType,
-    amount,
-    reference,
-    paymentId,
-    method,
-    status: "ACTIVE",
-    startsAt: new Date().toISOString(),
-    expiresAt: expiresAt.toISOString(),
-    createdAt: new Date().toISOString(),
-  }
-
-  console.log("💾 Dados da assinatura:", subscriptionData)
-  // await db.subscriptions.create({ data: subscriptionData })
+async function activateUserSubscription(data: any) {
+  console.log("🔓 Ativando assinatura do usuário:", data)
+  // TODO: Implementar ativação da assinatura
 }
 
 async function sendPaymentConfirmationEmail(data: {

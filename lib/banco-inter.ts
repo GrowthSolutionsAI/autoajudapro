@@ -316,7 +316,7 @@ export class BancoInterAPI {
         }
       }
 
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://autoajudapro.com"
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://autoajudapro.vercel.app"
 
       return {
         txid: pixData.txid,

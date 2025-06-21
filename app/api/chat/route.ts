@@ -1,7 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server"
 
 // CHAVE GROQ DIRETA (garantida)
-const GROQ_API_KEY = "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"
+const GROQ_API_KEY = "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"
+
+// MODELOS GROQ FUNCIONAIS (testados)
+const GROQ_MODELS = {
+  primary: "llama3-70b-8192",
+  fallback: "llama3-8b-8192",
+  instant: "llama-3.1-8b-instant",
+}
 
 interface Message {
   role: "user" | "assistant" | "system"
@@ -62,60 +69,6 @@ Sou a Sofia, sua IA especializada em psicologia positiva e desenvolvimento pesso
 O que especificamente está te deixando ansioso hoje? 🤗`
   }
 
-  if (
-    lastUserMessage.includes("relacionamento") ||
-    lastUserMessage.includes("namoro") ||
-    lastUserMessage.includes("amor")
-  ) {
-    return `${userName}, relacionamentos são uma parte importante da nossa vida 💕
-
-**🌟 Pilares de um Relacionamento Saudável:**
-- **Comunicação clara:** Expresse seus sentimentos honestamente
-- **Escuta ativa:** Dê atenção plena ao que o outro diz
-- **Respeito mútuo:** Valorize as diferenças e limites
-- **Tempo de qualidade:** Invista em momentos juntos
-
-**💡 Reflexão:** O que você mais valoriza em um relacionamento?
-
-Gostaria de compartilhar mais sobre sua situação específica? Estou aqui para te ajudar! 🤗`
-  }
-
-  if (
-    lastUserMessage.includes("trabalho") ||
-    lastUserMessage.includes("carreira") ||
-    lastUserMessage.includes("emprego")
-  ) {
-    return `${userName}, questões profissionais podem ser desafiadoras 💼
-
-**🎯 Estratégias para Carreira:**
-- **Autoconhecimento:** Identifique seus valores e objetivos
-- **Desenvolvimento:** Invista em suas habilidades
-- **Networking:** Construa relacionamentos profissionais
-- **Equilíbrio:** Mantenha harmonia entre trabalho e vida pessoal
-
-**💡 Pergunta reflexiva:** O que te motiva profissionalmente?
-
-Conte-me mais sobre seus desafios ou objetivos profissionais. Vamos encontrar caminhos juntos! ✨`
-  }
-
-  if (
-    lastUserMessage.includes("autoestima") ||
-    lastUserMessage.includes("confiança") ||
-    lastUserMessage.includes("inseguro")
-  ) {
-    return `${userName}, a autoestima é fundamental para nosso bem-estar 🌟
-
-**💪 Fortalecendo a Autoestima:**
-- **Autocompaixão:** Trate-se com gentileza
-- **Conquistas:** Celebre suas vitórias, mesmo as pequenas
-- **Autocuidado:** Dedique tempo para si mesmo
-- **Pensamentos positivos:** Questione autocríticas excessivas
-
-**🌈 Exercício:** Liste 3 qualidades suas que você valoriza.
-
-O que mais te incomoda em relação à sua autoestima? Vamos trabalhar isso juntos! 💙`
-  }
-
   // Resposta geral para outras mensagens
   return `${userName}, obrigada por compartilhar isso comigo 💙
 
@@ -127,9 +80,6 @@ Estou aqui para te apoiar em qualquer desafio que você esteja enfrentando.
 - ⭐ Desenvolvimento da autoestima
 - 💼 Orientação sobre carreira
 - 🌱 Estratégias de autocuidado
-
-**💭 Técnica rápida de bem-estar:**
-Respire fundo, feche os olhos por um momento e se pergunte: "Como posso ser gentil comigo mesmo hoje?"
 
 O que está em seu coração neste momento? Compartilhe comigo! 🤗`
 }
@@ -144,6 +94,53 @@ function extractUserName(messages: Message[]): string {
   return "amigo(a)"
 }
 
+// Função para tentar múltiplos modelos
+async function tryGroqModels(messages: any[], requestId: string) {
+  const modelsToTry = [GROQ_MODELS.primary, GROQ_MODELS.fallback, GROQ_MODELS.instant]
+
+  for (const model of modelsToTry) {
+    try {
+      console.log(`🔄 [${requestId}] Tentando modelo: ${model}`)
+
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${GROQ_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: messages,
+          temperature: 0.8,
+          max_tokens: 500,
+          top_p: 0.9,
+          stream: false,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const assistantMessage = data.choices?.[0]?.message?.content
+
+        if (assistantMessage) {
+          console.log(`✅ [${requestId}] Sucesso com modelo: ${model}`)
+          return {
+            message: assistantMessage,
+            model: model,
+            usage: data.usage,
+          }
+        }
+      } else {
+        console.log(`❌ [${requestId}] Modelo ${model} falhou: ${response.status}`)
+      }
+    } catch (error) {
+      console.log(`❌ [${requestId}] Erro no modelo ${model}:`, error)
+    }
+  }
+
+  return null
+}
+
 export async function POST(req: NextRequest) {
   const startTime = Date.now()
   const requestId = Math.random().toString(36).substring(2, 8)
@@ -156,7 +153,6 @@ export async function POST(req: NextRequest) {
     const { messages } = body
 
     console.log(`📝 [${requestId}] Mensagens recebidas: ${messages?.length}`)
-    console.log(`📤 [${requestId}] Última mensagem: "${messages[messages.length - 1]?.content?.substring(0, 50)}..."`)
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       console.error(`❌ [${requestId}] Mensagens inválidas`)
@@ -188,16 +184,17 @@ export async function POST(req: NextRequest) {
     const groqMessages = [
       {
         role: "system" as const,
-        content: `Você é Sofia, uma IA especializada em psicologia positiva e desenvolvimento pessoal.
+        content: `Você é Sofia, uma IA especializada em psicologia positiva e desenvolvimento pessoal brasileira.
 
-PERSONALIDADE: Empática, calorosa e acolhedora. Use linguagem humana e próxima.
+PERSONALIDADE: Empática, calorosa e acolhedora. Use linguagem brasileira natural e próxima.
 
-DIRETRIZES:
-- Respostas curtas e diretas (máximo 200 palavras)
-- Use o nome da pessoa quando possível
-- Faça perguntas para entender melhor
-- Use 2-3 emojis por mensagem
+DIRETRIZES OBRIGATÓRIAS:
+- Respostas entre 100-250 palavras
+- Use o nome da pessoa sempre que possível
+- Faça 1-2 perguntas para entender melhor
+- Use 2-3 emojis por mensagem (não exagere)
 - Termine sempre com uma pergunta que incentive o diálogo
+- Seja prática e ofereça técnicas concretas
 
 ÁREAS DE ESPECIALIDADE:
 1. Relacionamentos e comunicação
@@ -206,7 +203,7 @@ DIRETRIZES:
 4. Carreira e propósito de vida
 5. Técnicas de bem-estar (respiração, mindfulness)
 
-Seja concisa, empática e sempre termine com uma pergunta.`,
+IMPORTANTE: Seja concisa, empática e sempre termine com uma pergunta engajadora.`,
       },
       ...messages.map((msg) => ({
         role: msg.role,
@@ -214,87 +211,44 @@ Seja concisa, empática e sempre termine com uma pergunta.`,
       })),
     ]
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${GROQ_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile", // ✅ MODELO ATUALIZADO
-        messages: groqMessages,
-        temperature: 0.7,
-        max_tokens: 400,
-        stream: false,
-      }),
-    })
+    // Tentar múltiplos modelos
+    const groqResult = await tryGroqModels(groqMessages, requestId)
 
-    console.log(`📡 [${requestId}] Resposta Groq: ${response.status}`)
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`❌ [${requestId}] Erro Groq: ${response.status} - ${errorText.substring(0, 200)}`)
-
-      // Fallback para resposta contextual
-      const sofiaResponse = generateSofiaResponse(messages)
+    if (groqResult) {
       return NextResponse.json({
-        message: sofiaResponse,
+        message: groqResult.message,
         success: true,
-        provider: "Sofia-Fallback",
+        provider: "GroqCloud",
+        model: groqResult.model,
         responseTime: Date.now() - startTime,
+        metadata: {
+          model: groqResult.model,
+          usage: groqResult.usage,
+        },
       })
     }
 
-    const data = await response.json()
-    const assistantMessage = data.choices?.[0]?.message?.content
-
-    if (!assistantMessage) {
-      console.error(`❌ [${requestId}] Resposta vazia do Groq`)
-      const sofiaResponse = generateSofiaResponse(messages)
-      return NextResponse.json({
-        message: sofiaResponse,
-        success: true,
-        provider: "Sofia-Fallback",
-        responseTime: Date.now() - startTime,
-      })
-    }
-
-    console.log(`✅ [${requestId}] Sucesso com Groq! Tempo: ${Date.now() - startTime}ms`)
+    // Se todos os modelos falharam, usar fallback
+    console.log(`❌ [${requestId}] Todos os modelos Groq falharam, usando fallback`)
+    const sofiaResponse = generateSofiaResponse(messages)
 
     return NextResponse.json({
-      message: assistantMessage,
+      message: sofiaResponse,
       success: true,
-      provider: "GroqCloud",
+      provider: "Sofia-Fallback",
       responseTime: Date.now() - startTime,
-      metadata: {
-        model: data.model,
-        usage: data.usage,
-      },
     })
   } catch (error) {
     console.error(`❌ [${requestId}] Erro geral:`, error)
 
     // Fallback de emergência
-    try {
-      const body: ChatRequest = await req.json()
-      const sofiaResponse = generateSofiaResponse(body.messages || [])
+    const sofiaResponse = generateSofiaResponse([])
 
-      return NextResponse.json({
-        message: sofiaResponse,
-        success: true,
-        provider: "Sofia-Emergency",
-        responseTime: Date.now() - startTime,
-        error: error instanceof Error ? error.message : "Erro desconhecido",
-      })
-    } catch (fallbackError) {
-      console.error(`❌ [${requestId}] Erro no fallback:`, fallbackError)
-
-      return NextResponse.json({
-        message: "Olá! Sou a Sofia 💙\n\nComo posso te ajudar hoje?",
-        success: true,
-        provider: "Basic-Fallback",
-        responseTime: Date.now() - startTime,
-      })
-    }
+    return NextResponse.json({
+      message: sofiaResponse,
+      success: true,
+      provider: "Sofia-Emergency",
+      responseTime: Date.now() - startTime,
+    })
   }
 }

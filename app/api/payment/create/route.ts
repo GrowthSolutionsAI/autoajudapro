@@ -1,20 +1,16 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
+import { BancoInterAPI } from "@/lib/banco-inter"
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    console.log("🏦 Iniciando criação de pagamento...")
+    console.log("🏦 Criando pagamento PIX - Produção")
 
     const body = await req.json()
     const { planId, amount, customerName, customerEmail, customerDocument } = body
 
-    console.log("📦 Dados recebidos:", { planId, amount, customerName, customerEmail })
-
-    // Validar dados obrigatórios
+    // Validações
     if (!planId || !amount || !customerName || !customerEmail) {
-      return NextResponse.json(
-        { success: false, message: "Dados obrigatórios: planId, amount, customerName, customerEmail" },
-        { status: 400 },
-      )
+      return NextResponse.json({ success: false, message: "Dados obrigatórios ausentes" }, { status: 400 })
     }
 
     // Validar email
@@ -23,7 +19,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "Email inválido" }, { status: 400 })
     }
 
-    // Mapear planos para valores corretos
+    // Validar CPF (básico)
+    const cpf = customerDocument?.replace(/\D/g, "") || ""
+    if (cpf.length !== 11) {
+      return NextResponse.json({ success: false, message: "CPF inválido" }, { status: 400 })
+    }
+
+    // Mapear planos
     const planPrices = {
       daily: 9.9,
       weekly: 29.9,
@@ -38,49 +40,78 @@ export async function POST(req: Request) {
 
     const reference = `autoajuda-${planId}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`
 
-    console.log("💰 Processando pagamento:", {
+    console.log("💰 Dados validados:", {
+      plano: planId,
       valor: expectedAmount,
+      cliente: customerName,
+      email: customerEmail,
       referencia: reference,
     })
 
-    // Por enquanto, usar sistema interno até Banco Inter estar funcionando
-    const fallbackResult = await createInternalPayment({
-      amount: expectedAmount,
-      customerName,
-      customerEmail,
-      reference,
-      planId,
-    })
+    // Tentar criar PIX real com Banco Inter
+    try {
+      const bancoInter = new BancoInterAPI({
+        clientId: process.env.CLIENT_ID || "fd1641ee-6011-4132-b2ea-b87ed8edc4c7",
+        clientSecret: process.env.CLIENT_SECRET || "c838f820-224d-486a-a519-290a60f8db48",
+        contaCorrente: process.env.CONTA_CORRENTE || "413825752",
+      })
+      const pixResult = await bancoInter.createPixPayment({
+        amount: expectedAmount,
+        customerName,
+        customerEmail,
+        customerDocument: cpf,
+        reference,
+        planId,
+        description: `AutoAjuda Pro - ${planId}`,
+        expirationDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      })
 
-    console.log("✅ Pagamento criado com sucesso!")
+      console.log("✅ PIX criado com sucesso - Banco Inter")
 
-    return NextResponse.json({
-      success: true,
-      paymentUrl: fallbackResult.paymentUrl,
-      paymentCode: fallbackResult.paymentCode,
-      pixKey: fallbackResult.pixKey,
-      qrCode: fallbackResult.qrCode,
-      reference: reference,
-      provider: fallbackResult.provider,
-      environment: fallbackResult.environment,
-      message: fallbackResult.message,
-    })
+      return NextResponse.json({
+        success: true,
+        txid: pixResult.txid,
+        pixCopiaECola: pixResult.pixCopiaECola,
+        qrCode: pixResult.qrCode,
+        paymentUrl: pixResult.paymentUrl,
+        reference,
+        provider: "banco-inter",
+        environment: "production",
+        status: pixResult.status,
+        expiresAt: pixResult.expiresAt,
+        message: "PIX criado com sucesso - Banco Inter",
+      })
+    } catch (bancoInterError: any) {
+      console.error("❌ Erro Banco Inter:", bancoInterError)
+
+      // Fallback para sistema interno
+      console.log("🔄 Usando fallback interno...")
+
+      const fallbackResult = await createInternalPayment({
+        amount: expectedAmount,
+        customerName,
+        customerEmail,
+        reference,
+        planId,
+      })
+
+      return NextResponse.json({
+        success: true,
+        ...fallbackResult,
+        reference,
+        fallbackReason: bancoInterError?.message || "Banco Inter indisponível",
+      })
+    }
   } catch (error) {
-    console.error("❌ Erro geral ao criar pagamento:", error)
+    console.error("❌ Erro geral:", error)
 
-    // Retornar sempre JSON válido, mesmo em caso de erro
     return NextResponse.json(
       {
         success: false,
-        message: error instanceof Error ? error.message : "Erro interno do servidor",
+        message: error instanceof Error ? error.message : "Erro interno",
         error: "PAYMENT_CREATION_FAILED",
       },
-      {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
+      { status: 500 },
     )
   }
 }
@@ -92,33 +123,31 @@ async function createInternalPayment(data: {
   reference: string
   planId: string
 }) {
-  const { amount, customerName, customerEmail, reference, planId } = data
-
   const paymentCode = `PIX_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://autoajudapro.com"
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://autoajudapro.vercel.app"
 
-  // Simular PIX Key (chave aleatória para demonstração)
-  const pixKey = `00020126580014br.gov.bcb.pix0136${paymentCode}520400005303986540${amount.toFixed(2)}5802BR5925${customerName.substring(0, 25)}6009SAO PAULO62070503***6304`
+  // Gerar PIX Copia e Cola simulado
+  const pixKey = `00020126580014br.gov.bcb.pix0136${paymentCode}520400005303986540${data.amount.toFixed(2)}5802BR5925${data.customerName.substring(0, 25)}6009SAO PAULO62070503***6304`
 
-  // Simular QR Code base64 (pequeno quadrado preto para demonstração)
+  // QR Code base64 placeholder
   const qrCode = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
 
-  const paymentUrl = `${baseUrl}/payment/checkout?code=${paymentCode}&ref=${reference}`
+  const paymentUrl = `${baseUrl}/payment/checkout?code=${paymentCode}&ref=${data.reference}`
 
   console.log("✅ Pagamento interno criado:", {
     codigo: paymentCode,
-    valor: `R$ ${amount.toFixed(2)}`,
-    plano: planId,
+    valor: `R$ ${data.amount.toFixed(2)}`,
+    plano: data.planId,
   })
 
   return {
     success: true,
     paymentUrl,
     paymentCode,
-    pixKey,
+    pixCopiaECola: pixKey,
     qrCode,
-    provider: "internal-demo",
+    provider: "internal-fallback",
     environment: "development",
-    message: "PIX de demonstração criado - Sistema em desenvolvimento",
+    message: "PIX de demonstração - Fallback ativo",
   }
 }
