@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { X, CreditCard, Shield, CheckCircle, AlertCircle, Info, ExternalLink, Zap, Calendar, Crown } from "lucide-react"
+import { X, Shield, CheckCircle, AlertCircle, Info, Zap, Calendar, Crown, QrCode, Copy, Clock } from "lucide-react"
 
 interface PaymentModalProps {
   isOpen: boolean
@@ -17,9 +17,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success" | "error">("idle")
   const [errorMessage, setErrorMessage] = useState("")
-  const [paymentUrl, setPaymentUrl] = useState("")
-  const [paymentCode, setPaymentCode] = useState("")
-  const [paymentReference, setPaymentReference] = useState("")
+  const [paymentData, setPaymentData] = useState<any>(null)
   const [checkStatusInterval, setCheckStatusInterval] = useState<NodeJS.Timeout | null>(null)
   const [statusCheckCount, setStatusCheckCount] = useState(0)
   const [lastStatusMessage, setLastStatusMessage] = useState("")
@@ -29,7 +27,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
     daily: { name: "Acesso Diário", price: 9.9, period: "dia", icon: Calendar },
     weekly: { name: "Acesso Semanal", price: 29.9, period: "semana", icon: Zap },
     monthly: { name: "Acesso Mensal", price: 79.9, period: "mês", icon: Crown },
-    mensal: { name: "Acesso Mensal", price: 79.9, period: "mês", icon: Crown }, // Compatibilidade
+    mensal: { name: "Acesso Mensal", price: 79.9, period: "mês", icon: Crown },
   }
 
   const currentPlan = planConfig[selectedPlan as keyof typeof planConfig] || planConfig.monthly
@@ -52,7 +50,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
       }
 
       setStatusCheckCount(0)
-      setLastStatusMessage("Aguardando confirmação do pagamento...")
+      setLastStatusMessage("Aguardando confirmação do pagamento PIX...")
 
       const interval = setInterval(async () => {
         try {
@@ -62,7 +60,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
           console.error("❌ Erro na verificação:", error)
           setLastStatusMessage("Verificando status...")
         }
-      }, 10000) // Verificar a cada 10 segundos
+      }, 3000) // Verificar a cada 3 segundos
 
       setCheckStatusInterval(interval)
 
@@ -72,10 +70,33 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
           if (code) params.append("code", code)
           if (reference) params.append("reference", reference)
 
-          const response = await fetch(`/api/payment/status?${params.toString()}`)
-          const data = await response.json()
+          console.log("🔍 Verificando status:", { code, reference })
 
-          console.log("📊 Status:", data)
+          const response = await fetch(`/api/payment/status?${params.toString()}`, {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+            },
+          })
+
+          console.log("📥 Resposta status:", {
+            status: response.status,
+            contentType: response.headers.get("content-type"),
+            ok: response.ok,
+          })
+
+          // Verificar se a resposta é JSON válido
+          const contentType = response.headers.get("content-type")
+          if (!contentType || !contentType.includes("application/json")) {
+            const textResponse = await response.text()
+            console.error("❌ Resposta não é JSON:", textResponse)
+            setLastStatusMessage("Erro na verificação - resposta inválida")
+            return
+          }
+
+          const data = await response.json()
+          console.log("📊 Status PIX:", data)
 
           if (data.success) {
             setLastStatusMessage(data.statusText || "Verificando...")
@@ -83,7 +104,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
             if (data.status === "PAID" || data.status === "APPROVED") {
               if (checkStatusInterval) clearInterval(checkStatusInterval)
               setPaymentStatus("success")
-              setLastStatusMessage("Pagamento confirmado!")
+              setLastStatusMessage("Pagamento PIX confirmado!")
               setTimeout(() => {
                 onPaymentSuccess()
                 onClose()
@@ -91,11 +112,17 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
             } else if (data.status === "CANCELLED" || data.status === "REJECTED") {
               if (checkStatusInterval) clearInterval(checkStatusInterval)
               setPaymentStatus("error")
-              setErrorMessage("Pagamento cancelado ou rejeitado")
+              setErrorMessage("Pagamento PIX cancelado ou rejeitado")
+            } else {
+              // Status ainda pendente
+              setLastStatusMessage(data.statusText || `Status: ${data.status}`)
             }
+          } else {
+            setLastStatusMessage("Erro ao verificar status")
           }
         } catch (error) {
-          setLastStatusMessage("Verificando status...")
+          console.error("❌ Erro ao verificar status:", error)
+          setLastStatusMessage("Erro na verificação de status")
         }
       }
     },
@@ -109,40 +136,78 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
     setLastStatusMessage("")
 
     try {
+      console.log("💳 Iniciando criação de pagamento...")
+
       const response = await fetch("/api/payment/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
         body: JSON.stringify({
           planId: selectedPlan,
           amount: currentPlan.price,
           customerName: userName || "Cliente AutoAjuda Pro",
-          customerEmail: "cliente@exemplo.com", // TODO: Pegar email real do usuário
+          customerEmail: "cliente@exemplo.com",
+          customerDocument: "00000000000",
         }),
       })
+
+      console.log("📥 Resposta create:", {
+        status: response.status,
+        contentType: response.headers.get("content-type"),
+        ok: response.ok,
+      })
+
+      // Verificar se a resposta é JSON válido
+      const contentType = response.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/json")) {
+        const textResponse = await response.text()
+        console.error("❌ Resposta create não é JSON:", textResponse)
+        throw new Error("Resposta do servidor inválida")
+      }
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.message || "Erro ao criar pagamento")
+        throw new Error(data.message || `Erro HTTP: ${response.status}`)
       }
 
-      setPaymentUrl(data.paymentUrl)
-      setPaymentCode(data.paymentCode)
-      setPaymentReference(data.reference || "")
+      console.log("✅ Pagamento criado:", data)
 
-      // Abrir página de pagamento
-      window.open(data.paymentUrl, "_blank")
+      setPaymentData(data)
+      setLastStatusMessage("PIX de demonstração gerado! Aguardando confirmação...")
 
-      setLastStatusMessage("Complete o pagamento no PagBank - nova aba aberta")
-
-      // Iniciar verificação
-      startCheckingPaymentStatus(data.paymentCode, data.reference || "")
+      // Iniciar verificação de status
+      if (data.paymentCode && data.reference) {
+        startCheckingPaymentStatus(data.paymentCode, data.reference)
+      } else {
+        setLastStatusMessage("⚠️ Dados de pagamento incompletos")
+      }
     } catch (error) {
-      console.error("❌ Erro:", error)
+      console.error("❌ Erro ao criar pagamento:", error)
       setPaymentStatus("error")
-      setErrorMessage(error instanceof Error ? error.message : "Erro desconhecido")
+
+      if (error instanceof Error) {
+        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+          setErrorMessage("Erro de conexão. Verifique sua internet e tente novamente.")
+        } else if (error.message.includes("JSON") || error.message.includes("parse")) {
+          setErrorMessage("Erro de comunicação com o servidor. Tente novamente.")
+        } else {
+          setErrorMessage(error.message)
+        }
+      } else {
+        setErrorMessage("Erro desconhecido ao processar pagamento")
+      }
     } finally {
       setIsProcessing(false)
+    }
+  }
+
+  const copyPixKey = () => {
+    if (paymentData?.pixKey) {
+      navigator.clipboard.writeText(paymentData.pixKey)
+      setLastStatusMessage("Chave PIX copiada! Cole no seu app do banco")
     }
   }
 
@@ -153,6 +218,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
     setPaymentStatus("idle")
     setErrorMessage("")
     setLastStatusMessage("")
+    setPaymentData(null)
     onClose()
   }
 
@@ -170,7 +236,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
           </button>
 
           <div className="text-center">
-            <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-4 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+            <div className="bg-gradient-to-r from-orange-500 to-blue-500 p-4 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
               <IconComponent className="h-8 w-8 text-white" />
             </div>
             <CardTitle className="text-2xl font-bold text-gray-900">{currentPlan.name}</CardTitle>
@@ -181,9 +247,9 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
         <CardContent className="space-y-6">
           {paymentStatus === "idle" && (
             <>
-              <div className="p-6 rounded-xl border-2 border-blue-500 bg-blue-50">
+              <div className="p-6 rounded-xl border-2 border-orange-500 bg-orange-50">
                 <div className="text-center">
-                  <span className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
+                  <span className="bg-gradient-to-r from-orange-500 to-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
                     Plano Selecionado
                   </span>
                   <h3 className="font-bold text-xl text-gray-900 mt-3">{currentPlan.name}</h3>
@@ -210,14 +276,14 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
                 </div>
               </div>
 
-              <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl p-4">
+              <div className="bg-gradient-to-r from-orange-50 to-blue-50 border border-orange-200 rounded-xl p-4">
                 <div className="flex items-center gap-3">
-                  <div className="bg-gradient-to-r from-green-500 to-blue-500 p-2 rounded-full">
+                  <div className="bg-gradient-to-r from-orange-500 to-blue-500 p-2 rounded-full">
                     <Shield className="h-4 w-4 text-white" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-gray-900">Pagamento Seguro</h4>
-                    <p className="text-sm text-gray-700">PIX, Cartão de Crédito e Boleto via PagBank</p>
+                    <h4 className="font-semibold text-gray-900">Pagamento PIX</h4>
+                    <p className="text-sm text-gray-700">Sistema de demonstração ativo</p>
                   </div>
                 </div>
               </div>
@@ -225,33 +291,50 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
               <Button
                 onClick={handlePayment}
                 disabled={isProcessing}
-                className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white py-4 rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105"
+                className="w-full bg-gradient-to-r from-orange-500 to-blue-500 hover:from-orange-600 hover:to-blue-600 text-white py-4 rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105"
               >
                 {isProcessing ? (
                   <div className="flex items-center gap-2">
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Preparando pagamento...
+                    Gerando PIX...
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5" />
-                    Pagar R$ {currentPlan.price.toFixed(2).replace(".", ",")}
+                    <QrCode className="h-5 w-5" />
+                    Pagar R$ {currentPlan.price.toFixed(2).replace(".", ",")} via PIX
                   </div>
                 )}
               </Button>
 
-              <p className="text-center text-xs text-gray-500">
-                Sem compromisso • Cancele quando quiser • Suporte 24/7
-              </p>
+              <p className="text-center text-xs text-gray-500">💡 Sistema de demonstração • Pagamento simulado</p>
             </>
           )}
 
           {paymentStatus === "processing" && (
             <div className="text-center py-8">
-              <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-4 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              <div className="bg-gradient-to-r from-orange-500 to-blue-500 p-4 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                <Clock className="h-8 w-8 text-white animate-spin" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Processando Pagamento</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Processando PIX...</h3>
+
+              <div className="bg-white p-4 rounded-lg border-2 border-orange-200 mb-4">
+                <div className="w-48 h-48 mx-auto bg-gray-100 rounded-lg flex items-center justify-center">
+                  <QrCode className="h-16 w-16 text-gray-400" />
+                </div>
+                <p className="text-sm text-gray-600 mt-2">QR Code de demonstração</p>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg border mb-4">
+                <p className="text-sm text-gray-600 mb-2">Chave PIX de demonstração:</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-white p-2 rounded border text-xs break-all">
+                    demo-pix-key-{paymentData?.reference || "12345"}
+                  </code>
+                  <Button onClick={copyPixKey} size="sm" variant="outline">
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
 
               {lastStatusMessage && (
                 <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -262,21 +345,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
                 </div>
               )}
 
-              <p className="text-xs text-gray-400 mt-4">
-                Verificações: {statusCheckCount} • Última verificação há 10 segundos
-              </p>
-
-              {paymentUrl && (
-                <div className="mt-6">
-                  <Button
-                    onClick={() => window.open(paymentUrl, "_blank")}
-                    className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white flex items-center gap-2"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Abrir Página de Pagamento
-                  </Button>
-                </div>
-              )}
+              <p className="text-xs text-gray-400 mt-4">Verificações: {statusCheckCount} • Sistema de demonstração</p>
             </div>
           )}
 
@@ -285,7 +354,7 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
               <div className="bg-green-100 p-4 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
                 <CheckCircle className="h-8 w-8 text-green-600" />
               </div>
-              <h3 className="text-xl font-bold text-green-900 mb-2">🎉 Pagamento Confirmado!</h3>
+              <h3 className="text-xl font-bold text-green-900 mb-2">🎉 PIX Confirmado!</h3>
               <p className="text-green-700 mb-2">Seu {currentPlan.name} foi ativado com sucesso!</p>
               <div className="bg-green-50 rounded-lg p-3 mt-4">
                 <p className="text-sm text-green-800">
@@ -310,23 +379,12 @@ function PaymentModal({ isOpen, onClose, onPaymentSuccess, userName, selectedPla
                   onClick={() => {
                     setPaymentStatus("idle")
                     setErrorMessage("")
+                    setPaymentData(null)
                   }}
-                  className="bg-blue-500 hover:bg-blue-600 text-white"
+                  className="bg-orange-500 hover:bg-orange-600 text-white"
                 >
                   Tentar Novamente
                 </Button>
-                {paymentUrl && (
-                  <div>
-                    <p className="text-sm text-gray-600 mt-3 mb-2">Ou abra a página de pagamento diretamente:</p>
-                    <Button
-                      onClick={() => window.open(paymentUrl, "_blank")}
-                      variant="outline"
-                      className="border-blue-500 text-blue-500 hover:bg-blue-50"
-                    >
-                      Abrir Página de Pagamento
-                    </Button>
-                  </div>
-                )}
               </div>
             </div>
           )}

@@ -1,79 +1,95 @@
-export async function GET(req: Request) {
+import { NextResponse } from "next/server"
+
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(req.url)
-    const code = searchParams.get("code")
+    const { searchParams } = new URL(request.url)
     const reference = searchParams.get("reference")
+    const txid = searchParams.get("txid")
+    const code = searchParams.get("code")
 
-    console.log("🔍 Consultando status do pagamento:", { code, reference })
+    console.log("🔍 Consultando status:", { reference, txid, code })
 
-    if (!code && !reference) {
-      return Response.json({ success: false, message: "Código ou referência obrigatória" }, { status: 400 })
+    if (!reference && !txid && !code) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Reference, txid ou code é obrigatório",
+        },
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      )
     }
 
-    // Sistema de status interno (sem dependência externa)
-    const paymentStatus = await getInternalPaymentStatus(code, reference)
+    // Sistema de demonstração - simular diferentes status baseado no tempo
+    const paymentStatus = getSimulatedPaymentStatus(code || reference || txid || "")
 
-    return Response.json({
-      success: true,
-      status: paymentStatus.status,
-      statusText: paymentStatus.description,
-      paymentId: code,
-      reference: reference,
-      amount: paymentStatus.amount,
-      method: paymentStatus.method,
-      updatedAt: new Date().toISOString(),
-    })
+    return NextResponse.json(
+      {
+        success: true,
+        status: paymentStatus.status,
+        statusText: paymentStatus.description,
+        paymentId: code || reference || txid,
+        reference: reference,
+        txid: txid,
+        amount: paymentStatus.amount,
+        method: "PIX_DEMO",
+        provider: "internal-demo",
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        headers: { "Content-Type": "application/json" },
+      },
+    )
   } catch (error) {
     console.error("❌ Erro ao consultar status:", error)
-    return Response.json(
+
+    return NextResponse.json(
       {
         success: false,
-        message: error instanceof Error ? error.message : "Erro interno",
+        error: "Erro interno do servidor",
+        message: error instanceof Error ? error.message : "Erro desconhecido",
       },
-      { status: 500 },
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
     )
   }
 }
 
-async function getInternalPaymentStatus(code: string | null, reference: string | null) {
-  // Simular diferentes cenários baseados no código
-  if (code?.startsWith("PAY_")) {
-    // Códigos internos - simular aprovação baseada no tempo
-    const codeTimestamp = Number.parseInt(code.split("_")[1] || "0")
-    const timeElapsed = Date.now() - codeTimestamp
-    const minutesElapsed = timeElapsed / (1000 * 60)
+function getSimulatedPaymentStatus(identifier: string) {
+  // Simular diferentes cenários baseado no identificador
+  const now = Date.now()
+  const hash = identifier.split("").reduce((a, b) => {
+    a = (a << 5) - a + b.charCodeAt(0)
+    return a & a
+  }, 0)
 
-    if (minutesElapsed < 1) {
-      return {
-        status: "PENDING",
-        description: "Processando pagamento...",
-        amount: 0,
-        method: "INTERNAL",
-      }
-    } else if (minutesElapsed < 2) {
-      return {
-        status: "IN_ANALYSIS",
-        description: "Pagamento em análise...",
-        amount: 0,
-        method: "INTERNAL",
-      }
-    } else {
-      // 90% de chance de aprovação
-      const isApproved = Math.random() > 0.1
-      return {
-        status: isApproved ? "PAID" : "DECLINED",
-        description: isApproved ? "Pagamento aprovado" : "Pagamento recusado",
-        amount: 0,
-        method: "INTERNAL",
-      }
+  // Usar hash para determinar tempo de "processamento"
+  const processingTime = Math.abs(hash) % 30000 // 0-30 segundos
+  const timeElapsed = now % 60000 // Simular ciclo de 1 minuto
+
+  if (timeElapsed < processingTime) {
+    return {
+      status: "PENDING",
+      description: "Aguardando pagamento PIX...",
+      amount: 79.9,
     }
-  }
-
-  // Status padrão para códigos desconhecidos
-  return {
-    status: "PENDING",
-    description: "Aguardando confirmação...",
-    amount: 0,
-    method: "UNKNOWN",
+  } else if (timeElapsed < processingTime + 5000) {
+    return {
+      status: "PROCESSING",
+      description: "Processando pagamento PIX...",
+      amount: 79.9,
+    }
+  } else {
+    // 95% de chance de aprovação
+    const isApproved = Math.random() > 0.05
+    return {
+      status: isApproved ? "PAID" : "REJECTED",
+      description: isApproved ? "Pagamento PIX confirmado!" : "Pagamento PIX rejeitado",
+      amount: 79.9,
+    }
   }
 }

@@ -1,38 +1,13 @@
+// Webhook principal - redireciona para Banco Inter
 export async function POST(req: Request) {
   try {
-    console.log("🔔 Webhook recebido do PagBank")
+    console.log("🔔 Webhook recebido - redirecionando para Banco Inter")
 
-    // Verificar método de autenticação do webhook (implementar se necessário)
-    const userAgent = req.headers.get("user-agent") || ""
-    console.log("🔍 User-Agent:", userAgent)
-
-    const body = await req.text()
-    console.log("📦 Dados brutos do webhook:", body.substring(0, 500))
-
-    let webhookData
-    try {
-      webhookData = JSON.parse(body)
-    } catch (parseError) {
-      console.error("❌ Erro ao fazer parse do JSON:", parseError)
-      return Response.json({ success: false, message: "JSON inválido" }, { status: 400 })
-    }
-
-    console.log("📊 Dados estruturados:", JSON.stringify(webhookData, null, 2))
-
-    // Processar webhook do PagBank
-    if (webhookData.id && (webhookData.charges || webhookData.qr_codes)) {
-      return await handlePagBankWebhook(webhookData)
-    }
-
-    // Webhook de notificação simples
-    if (webhookData.notificationCode || webhookData.notificationType) {
-      return await handleSimpleNotification(webhookData)
-    }
-
-    console.log("⚠️ Tipo de webhook não reconhecido")
-    return Response.json({ success: true, message: "Webhook processado (tipo não reconhecido)" })
+    // Redirecionar todos os webhooks para Banco Inter
+    const bancoInterWebhook = await import("./banco-inter/route")
+    return bancoInterWebhook.POST(req)
   } catch (error) {
-    console.error("❌ Erro no webhook:", error)
+    console.error("❌ Erro no webhook principal:", error)
     return Response.json(
       {
         success: false,

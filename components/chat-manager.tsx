@@ -3,32 +3,9 @@
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import {
-  Heart,
-  Brain,
-  Target,
-  Briefcase,
-  Smile,
-  Zap,
-  Send,
-  User,
-  X,
-  Plus,
-  MessageCircle,
-  Crown,
-  Lock,
-  Lightbulb,
-  Menu,
-  ChevronLeft,
-  Cpu,
-  Trash2,
-  Bot,
-  RefreshCw,
-  Calendar,
-} from "lucide-react"
+import { Heart, Brain, Target, Briefcase, Smile, Zap } from "lucide-react"
 import PaymentModal from "./payment-modal"
+import AdvancedChatInterface from "./advanced-chat-interface"
 
 interface ChatSession {
   id: string
@@ -50,6 +27,7 @@ interface ChatManagerProps {
   isOpen: boolean
   onClose: () => void
   userName: string
+  userData?: any
 }
 
 interface UserSubscription {
@@ -65,7 +43,19 @@ const FREE_MESSAGE_LIMIT = 3 // Reduzido para incentivar assinatura
 // Adicione esta função no início do arquivo, fora do componente
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-export default function ChatManager({ isOpen, onClose, userName }: ChatManagerProps) {
+export default function ChatManager({ isOpen, onClose, userName, userData }: ChatManagerProps) {
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
+
+  // Verificar se tem assinatura ativa
+  const hasActiveSubscription =
+    userData?.subscription?.status === "active" && new Date(userData.subscription.endDate) > new Date()
+
+  const handlePaymentSuccess = () => {
+    setIsPaymentModalOpen(false)
+    // Recarregar dados do usuário
+    window.location.reload()
+  }
+
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([
     {
       id: "1",
@@ -93,7 +83,6 @@ Como você gostaria que eu te chamasse?`,
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [showAreaButtons, setShowAreaButtons] = useState(false)
@@ -111,7 +100,6 @@ Como você gostaria que eu te chamasse?`,
   const userMessageCount = currentChat?.messageCount || 0
 
   // Verificar se usuário tem acesso baseado na assinatura
-  const hasActiveSubscription = userSubscription?.isActive && new Date(userSubscription.expiresAt) > new Date()
   const isFreeLimitReached = userMessageCount >= FREE_MESSAGE_LIMIT && !hasActiveSubscription
   const remainingFreeMessages = hasActiveSubscription ? "∞" : Math.max(0, FREE_MESSAGE_LIMIT - userMessageCount)
 
@@ -332,15 +320,6 @@ Como você gostaria que eu te chamasse?`,
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInput(e.target.value)
-  }
-
-  const handlePaymentSuccess = () => {
-    // Recarregar assinatura após pagamento
-    setIsPaymentModalOpen(false)
-    // Verificar assinatura novamente
-    setTimeout(() => {
-      window.location.reload() // Recarregar página para atualizar estado
-    }, 2000)
   }
 
   const handleChatSelect = (chatId: string) => {
@@ -670,382 +649,18 @@ Tente enviar sua mensagem novamente em alguns instantes. 💙`,
 
   return (
     <>
-      <div className="fixed inset-0 bg-gradient-to-br from-blue-50 via-white to-purple-50 z-50 flex">
-        {/* Sidebar - Responsivo */}
-        <div
-          className={`
-          ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"} 
-          md:translate-x-0 
-          fixed md:relative 
-          w-80 md:w-80 
-          h-full 
-          bg-white/90 backdrop-blur-md 
-          border-r border-blue-100 
-          flex flex-col 
-          transition-transform duration-300 ease-in-out
-          z-50 md:z-auto
-        `}
-        >
-          {/* Header do Sidebar */}
-          <div className="p-4 border-b border-blue-100">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-2 rounded-lg">
-                  <Cpu className="h-5 w-5 text-white" />
-                </div>
-                <span className="font-semibold text-gray-900">Suas Conversas</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={() => setIsSidebarOpen(false)}
-                  variant="ghost"
-                  size="sm"
-                  className="md:hidden hover:bg-gray-100 rounded-full p-2"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button
-                  onClick={onClose}
-                  variant="ghost"
-                  size="sm"
-                  className="hover:bg-red-100 hover:text-red-600 rounded-full p-2"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+      <AdvancedChatInterface
+        isOpen={isOpen}
+        onClose={onClose}
+        userName={userName}
+        userId={userData?.id || "demo-user"}
+        hasActiveSubscription={hasActiveSubscription}
+      />
 
-            <Button
-              onClick={createNewChat}
-              className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-lg"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Nova Conversa
-            </Button>
-          </div>
-
-          {/* Lista de Chats */}
-          <div className="flex-1 overflow-y-auto p-2">
-            {chatSessions.map((chat) => (
-              <div
-                key={chat.id}
-                className={`p-3 rounded-lg mb-2 cursor-pointer transition-all duration-200 group ${
-                  currentChatId === chat.id
-                    ? "bg-gradient-to-r from-blue-100 to-purple-100 border border-blue-200"
-                    : "hover:bg-gray-100"
-                }`}
-                onClick={() => handleChatSelect(chat.id)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <MessageCircle className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-900 truncate">{chat.title}</span>
-                      {hasActiveSubscription && <Crown className="h-3 w-3 text-yellow-500" />}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-gray-500">
-                        {new Date(chat.lastActivity).toLocaleDateString("pt-BR")} às{" "}
-                        {new Date(chat.lastActivity).toLocaleTimeString("pt-BR", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                      {!hasActiveSubscription && (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                          {typeof remainingFreeMessages === "number"
-                            ? `${Math.max(0, FREE_MESSAGE_LIMIT - chat.messageCount)} restantes`
-                            : "Ilimitado"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {chatSessions.length > 1 && (
-                    <Button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteChat(chat.id)
-                      }}
-                      variant="ghost"
-                      size="sm"
-                      className="opacity-0 group-hover:opacity-100 hover:bg-red-100 hover:text-red-600 rounded-full p-1"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Info do usuário */}
-          <div className="p-4 border-t border-blue-100">
-            <div className="flex items-center gap-3">
-              <div className="bg-gray-300 p-2 rounded-full">
-                <User className="h-5 w-5 text-gray-600" />
-              </div>
-              <div>
-                <p className="font-medium text-gray-900">{userName}</p>
-                <div className="flex items-center gap-1">
-                  {hasActiveSubscription ? (
-                    <>
-                      <Crown className="h-3 w-3 text-yellow-500" />
-                      <span className="text-xs text-yellow-600">Premium Ativo</span>
-                    </>
-                  ) : (
-                    <>
-                      <Calendar className="h-3 w-3 text-gray-500" />
-                      <span className="text-xs text-gray-500">Usuário Gratuito</span>
-                    </>
-                  )}
-                </div>
-                {hasActiveSubscription && userSubscription && (
-                  <p className="text-xs text-gray-500">
-                    Expira: {new Date(userSubscription.expiresAt).toLocaleDateString("pt-BR")}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Overlay para mobile quando sidebar está aberta */}
-        {isSidebarOpen && (
-          <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsSidebarOpen(false)} />
-        )}
-
-        {/* Área principal do chat */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Header do Chat */}
-          <div className="bg-white/80 backdrop-blur-md border-b border-blue-100 p-3 md:p-4">
-            <div className="flex items-center gap-2 md:gap-4">
-              {/* Botão menu mobile */}
-              <Button
-                onClick={() => setIsSidebarOpen(true)}
-                variant="ghost"
-                size="sm"
-                className="md:hidden hover:bg-gray-100 rounded-full p-2"
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
-
-              <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-2 md:p-3 rounded-xl">
-                <Bot className="h-5 w-5 md:h-6 md:w-6 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h1 className="text-lg md:text-xl font-bold text-gray-900 truncate">Sofia</h1>
-                <p className="text-xs md:text-sm text-gray-600 truncate">IA Especialista em Autoajuda</p>
-              </div>
-
-              {/* Status do usuário */}
-              <div className="hidden sm:flex items-center gap-2 md:gap-4">
-                {hasActiveSubscription ? (
-                  <div className="flex items-center gap-2 bg-yellow-100 px-2 md:px-3 py-1 rounded-full">
-                    <Crown className="w-3 h-3 md:w-4 md:h-4 text-yellow-600" />
-                    <span className="text-xs md:text-sm text-yellow-700 font-medium">Premium</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 bg-blue-100 px-2 md:px-3 py-1 rounded-full">
-                    <span className="text-xs md:text-sm text-blue-700 font-medium">
-                      {remainingFreeMessages} restantes
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 bg-green-100 px-2 md:px-3 py-1 rounded-full">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-xs md:text-sm text-green-700 font-medium">IA Online</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-3 md:p-6">
-            {currentChat && currentChat.messages.length <= 1 && (
-              <div className="text-center py-8 md:py-12">
-                <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-3 md:p-4 rounded-full w-16 h-16 md:w-20 md:h-20 mx-auto mb-4 md:mb-6 flex items-center justify-center">
-                  <Bot className="h-8 w-8 md:h-10 md:w-10 text-white" />
-                </div>
-                <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-3 md:mb-4">Conversa com Sofia - IA 👋</h2>
-                <p className="text-base md:text-lg text-gray-600 mb-6 md:mb-8 max-w-3xl mx-auto px-4">
-                  Estou aqui para te ajudar em sua jornada de autoconhecimento e bem-estar.
-                </p>
-              </div>
-            )}
-
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-2 md:gap-4 mb-6 md:mb-8 ${message.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                {message.role === "assistant" && (
-                  <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-2 md:p-3 rounded-full flex-shrink-0 h-10 w-10 md:h-12 md:w-12 flex items-center justify-center">
-                    <Bot className="h-5 w-5 md:h-6 md:w-6 text-white" />
-                  </div>
-                )}
-
-                <div
-                  className={`max-w-[85%] md:max-w-[80%] p-4 md:p-6 rounded-2xl ${
-                    message.role === "user"
-                      ? "bg-gradient-to-r from-blue-500 to-purple-500 text-white"
-                      : "bg-white/90 backdrop-blur-sm text-gray-900 shadow-lg border border-blue-100"
-                  }`}
-                >
-                  {message.role === "assistant" && (
-                    <div className="flex items-center gap-2 mb-2 md:mb-3">
-                      <span className="font-semibold text-blue-600 text-sm md:text-base">Sofia IA</span>
-                      <Heart className="h-3 w-3 md:h-4 md:w-4 text-pink-500" />
-                    </div>
-                  )}
-                  <div className="prose prose-sm max-w-none">
-                    <p className="leading-relaxed whitespace-pre-wrap text-sm md:text-sm">{message.content}</p>
-                  </div>
-                </div>
-
-                {message.role === "user" && (
-                  <div className="bg-gray-300 p-2 md:p-3 rounded-full flex-shrink-0 h-10 w-10 md:h-12 md:w-12 flex items-center justify-center">
-                    <User className="h-5 w-5 md:h-6 md:w-6 text-gray-600" />
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* Opções de áreas após o usuário informar seu nome */}
-            {showAreaOptions && currentChat && currentChat.messages.length === 3 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 my-4 max-w-4xl mx-auto">
-                {areaOptions.map((area) => (
-                  <Button
-                    key={area.id}
-                    variant="outline"
-                    className="flex items-start h-auto text-left bg-white hover:bg-blue-50 border-2 border-blue-200 hover:border-blue-400 rounded-xl transition-all duration-200 p-0 overflow-hidden"
-                    onClick={() => handleAreaSelection(area.title)}
-                    disabled={isLoading}
-                  >
-                    <div className="flex p-4 w-full">
-                      <div className="flex-shrink-0 mr-3 mt-1">{area.icon}</div>
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900 mb-1">{area.title}</div>
-                        <div className="text-xs text-gray-600 break-words">{area.description}</div>
-                      </div>
-                    </div>
-                  </Button>
-                ))}
-              </div>
-            )}
-
-            {isLoading && (
-              <div className="flex gap-2 md:gap-4 mb-6 md:mb-8 justify-start">
-                <div className="bg-gradient-to-r from-blue-500 to-purple-500 p-2 md:p-3 rounded-full flex-shrink-0 h-10 w-10 md:h-12 md:w-12 flex items-center justify-center">
-                  <Bot className="h-5 w-5 md:h-6 md:w-6 text-white" />
-                </div>
-                <div className="bg-white/90 backdrop-blur-sm p-4 md:p-6 rounded-2xl shadow-lg border border-blue-100">
-                  <div className="flex items-center gap-2 mb-2 md:mb-3">
-                    <span className="font-semibold text-blue-600 text-sm md:text-base">Sofia IA</span>
-                    <Heart className="h-3 w-3 md:h-4 md:w-4 text-pink-500" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs md:text-sm text-gray-600">Analisando sua mensagem...</span>
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                      <div
-                        className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.1s" }}
-                      ></div>
-                      <div
-                        className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.2s" }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input Area */}
-          <div className="bg-white/80 backdrop-blur-md border-t border-blue-100 p-3 md:p-4">
-            <form onSubmit={handleFormSubmit} className="flex gap-2 md:gap-3 max-w-4xl mx-auto">
-              <Input
-                value={input}
-                onChange={handleInputChange}
-                placeholder={
-                  isFreeLimitReached
-                    ? "Limite de mensagens gratuitas atingido"
-                    : currentChat?.messages.length === 1
-                      ? "Digite seu nome..."
-                      : "Digite sua mensagem para a Sofia IA..."
-                }
-                className="flex-1 rounded-full border-blue-200 focus:border-blue-500 py-6 px-4 md:px-6 text-base"
-                disabled={isLoading || isFreeLimitReached || showAreaOptions}
-              />
-              <Button
-                type="submit"
-                disabled={isLoading || !input.trim() || isFreeLimitReached || showAreaOptions}
-                className={`bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-full p-3 md:p-4 ${
-                  isFreeLimitReached || showAreaOptions ? "opacity-50 cursor-not-allowed" : ""
-                }`}
-              >
-                <Send className="h-5 w-5 md:h-6 md:w-6" />
-              </Button>
-            </form>
-
-            {/* Contador de mensagens e aviso */}
-            <div className="flex justify-center items-center mt-2 md:mt-3">
-              {isFreeLimitReached ? (
-                <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
-                  <Lock className="h-3 w-3 md:h-4 md:w-4 text-gray-500" />
-                  <span>
-                    Limite de mensagens gratuitas atingido.{" "}
-                    <button
-                      onClick={() => setIsPaymentModalOpen(true)}
-                      className="text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      Escolher plano
-                    </button>
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-xs md:text-sm text-gray-600">
-                  <Lightbulb className="h-3 w-3 md:h-4 md:w-4 text-yellow-500" />
-                  <span>
-                    {hasActiveSubscription
-                      ? "Mensagens ilimitadas ativadas! Suas conversas são privadas e seguras."
-                      : `${remainingFreeMessages} mensagens gratuitas restantes. Suas conversas são privadas e seguras.`}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {lastMessageError && (
-        <div className="flex items-center justify-center p-4">
-          <Button
-            onClick={handleRetry}
-            disabled={isRetrying}
-            variant="outline"
-            className="border-blue-500 text-blue-500 hover:bg-blue-50 flex items-center gap-2"
-          >
-            {isRetrying ? (
-              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Tentar Novamente
-          </Button>
-        </div>
-      )}
-
-      {/* Modal de Pagamento */}
       <PaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
-        onSuccess={handlePaymentSuccess}
+        onPaymentSuccess={handlePaymentSuccess}
         userName={userName}
       />
     </>
