@@ -69,6 +69,76 @@ Sou a Sofia, sua IA especializada em psicologia positiva e desenvolvimento pesso
 O que especificamente está te deixando ansioso hoje? 🤗`
   }
 
+  if (
+    lastUserMessage.includes("relacionamento") ||
+    lastUserMessage.includes("namorado") ||
+    lastUserMessage.includes("namorada") ||
+    lastUserMessage.includes("parceiro")
+  ) {
+    return `${userName}, relacionamentos são uma das partes mais importantes da nossa vida 💕
+
+**🌟 Dicas para Relacionamentos Saudáveis:**
+1. **Comunicação Clara:**
+   - Expresse seus sentimentos sem culpar
+   - Escute ativamente o outro
+   - Use "eu sinto" ao invés de "você faz"
+
+2. **Limites Saudáveis:**
+   - Mantenha sua individualidade
+   - Respeite o espaço do outro
+   - Comunique suas necessidades
+
+**💭 Reflexão:** Um relacionamento saudável soma, não subtrai da sua felicidade.
+
+O que especificamente está acontecendo no seu relacionamento? 🤗`
+  }
+
+  if (
+    lastUserMessage.includes("autoestima") ||
+    lastUserMessage.includes("confiança") ||
+    lastUserMessage.includes("inseguro")
+  ) {
+    return `${userName}, trabalhar a autoestima é um dos investimentos mais importantes que você pode fazer ⭐
+
+**🌱 Exercícios para Autoestima:**
+1. **Diário de Conquistas:**
+   - Anote 3 coisas que fez bem hoje
+   - Celebre pequenas vitórias
+   - Reconheça seu progresso
+
+2. **Afirmações Positivas:**
+   - "Eu sou capaz e merecedor(a)"
+   - "Estou crescendo a cada dia"
+   - "Minha opinião sobre mim importa"
+
+**💭 Lembre-se:** Você é único(a) e tem valor independente da aprovação dos outros.
+
+O que mais afeta sua autoestima no dia a dia? 🤗`
+  }
+
+  if (
+    lastUserMessage.includes("trabalho") ||
+    lastUserMessage.includes("carreira") ||
+    lastUserMessage.includes("profissional")
+  ) {
+    return `${userName}, questões de carreira podem ser desafiadoras, mas também oportunidades de crescimento 💼
+
+**🎯 Reflexões sobre Carreira:**
+1. **Valores Pessoais:**
+   - O que é realmente importante para você?
+   - Qual impacto quer causar no mundo?
+   - Como equilibrar vida pessoal e profissional?
+
+2. **Próximos Passos:**
+   - Identifique suas forças únicas
+   - Busque mentoria e networking
+   - Invista em desenvolvimento contínuo
+
+**💭 Reflexão:** Sua carreira deve alinhar com seus valores e propósito de vida.
+
+O que mais te preocupa na sua vida profissional? 🤗`
+  }
+
   // Resposta geral para outras mensagens
   return `${userName}, obrigada por compartilhar isso comigo 💙
 

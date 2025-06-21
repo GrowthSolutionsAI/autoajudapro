@@ -275,7 +275,7 @@ async function sendPaymentConfirmationEmail(data: {
               <h3 style="color: #065f46; margin-top: 0;">🚀 Seu acesso está ativo!</h3>
               <ul style="color: #047857; padding-left: 20px;">
                 <li>✅ Mensagens ilimitadas com a Sofia</li>
-                <li>✅ IA avançada (Claude Sonnet)</li>
+                <li>✅ IA avançada (Groq)</li>
                 <li>✅ Suporte prioritário</li>
                 <li>✅ Todas as funcionalidades premium</li>
               </ul>
@@ -316,15 +316,4 @@ async function sendPaymentConfirmationEmail(data: {
 function extractPlanFromReference(reference: string): string {
   const match = reference.match(/autoajuda-(\w+)-/)
   return match ? match[1] : "monthly"
-}
-
-async function updateOrderStatus(data: any) {
-  console.log("📝 Atualizando status do pedido:", data.reference, "->", data.status)
-  // TODO: Implementar atualização no banco de dados
-  // await db.orders.update({ where: { reference: data.reference }, data })
-}
-
-async function handleSimpleNotification(data: any) {
-  console.log("📱 Processando notificação simples:", data)
-  return Response.json({ success: true, message: "Notificação processada" })
 }
