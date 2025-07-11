@@ -5,9 +5,9 @@ const GROQ_API_KEY = "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"
 
 // MODELOS GROQ FUNCIONAIS (testados)
 const GROQ_MODELS = {
-  primary: "llama3-70b-8192",
-  fallback: "llama3-8b-8192",
-  instant: "llama-3.1-8b-instant",
+  primary: "llama3-70b-8192", // Modelo principal (mais inteligente)
+  fallback: "llama3-8b-8192", // Fallback rápido
+  instant: "llama-3.1-8b-instant", // Ultra rápido
 }
 
 interface Message {
@@ -71,26 +71,38 @@ O que especificamente está te deixando ansioso hoje? 🤗`
 
   if (
     lastUserMessage.includes("relacionamento") ||
-    lastUserMessage.includes("namorado") ||
-    lastUserMessage.includes("namorada") ||
-    lastUserMessage.includes("parceiro")
+    lastUserMessage.includes("namoro") ||
+    lastUserMessage.includes("amor")
   ) {
-    return `${userName}, relacionamentos são uma das partes mais importantes da nossa vida 💕
+    return `${userName}, relacionamentos são uma parte importante da nossa vida 💕
 
-**🌟 Dicas para Relacionamentos Saudáveis:**
-1. **Comunicação Clara:**
-   - Expresse seus sentimentos sem culpar
-   - Escute ativamente o outro
-   - Use "eu sinto" ao invés de "você faz"
+**🌟 Pilares de um Relacionamento Saudável:**
+- **Comunicação clara:** Expresse seus sentimentos honestamente
+- **Escuta ativa:** Dê atenção plena ao que o outro diz
+- **Respeito mútuo:** Valorize as diferenças e limites
+- **Tempo de qualidade:** Invista em momentos juntos
 
-2. **Limites Saudáveis:**
-   - Mantenha sua individualidade
-   - Respeite o espaço do outro
-   - Comunique suas necessidades
+**💡 Reflexão:** O que você mais valoriza em um relacionamento?
 
-**💭 Reflexão:** Um relacionamento saudável soma, não subtrai da sua felicidade.
+Gostaria de compartilhar mais sobre sua situação específica? Estou aqui para te ajudar! 🤗`
+  }
 
-O que especificamente está acontecendo no seu relacionamento? 🤗`
+  if (
+    lastUserMessage.includes("trabalho") ||
+    lastUserMessage.includes("carreira") ||
+    lastUserMessage.includes("emprego")
+  ) {
+    return `${userName}, questões profissionais podem ser desafiadoras 💼
+
+**🎯 Estratégias para Carreira:**
+- **Autoconhecimento:** Identifique seus valores e objetivos
+- **Desenvolvimento:** Invista em suas habilidades
+- **Networking:** Construa relacionamentos profissionais
+- **Equilíbrio:** Mantenha harmonia entre trabalho e vida pessoal
+
+**💡 Pergunta reflexiva:** O que te motiva profissionalmente?
+
+Conte-me mais sobre seus desafios ou objetivos profissionais. Vamos encontrar caminhos juntos! ✨`
   }
 
   if (
@@ -98,45 +110,17 @@ O que especificamente está acontecendo no seu relacionamento? 🤗`
     lastUserMessage.includes("confiança") ||
     lastUserMessage.includes("inseguro")
   ) {
-    return `${userName}, trabalhar a autoestima é um dos investimentos mais importantes que você pode fazer ⭐
+    return `${userName}, a autoestima é fundamental para nosso bem-estar 🌟
 
-**🌱 Exercícios para Autoestima:**
-1. **Diário de Conquistas:**
-   - Anote 3 coisas que fez bem hoje
-   - Celebre pequenas vitórias
-   - Reconheça seu progresso
+**💪 Fortalecendo a Autoestima:**
+- **Autocompaixão:** Trate-se com gentileza
+- **Conquistas:** Celebre suas vitórias, mesmo as pequenas
+- **Autocuidado:** Dedique tempo para si mesmo
+- **Pensamentos positivos:** Questione autocríticas excessivas
 
-2. **Afirmações Positivas:**
-   - "Eu sou capaz e merecedor(a)"
-   - "Estou crescendo a cada dia"
-   - "Minha opinião sobre mim importa"
+**🌈 Exercício:** Liste 3 qualidades suas que você valoriza.
 
-**💭 Lembre-se:** Você é único(a) e tem valor independente da aprovação dos outros.
-
-O que mais afeta sua autoestima no dia a dia? 🤗`
-  }
-
-  if (
-    lastUserMessage.includes("trabalho") ||
-    lastUserMessage.includes("carreira") ||
-    lastUserMessage.includes("profissional")
-  ) {
-    return `${userName}, questões de carreira podem ser desafiadoras, mas também oportunidades de crescimento 💼
-
-**🎯 Reflexões sobre Carreira:**
-1. **Valores Pessoais:**
-   - O que é realmente importante para você?
-   - Qual impacto quer causar no mundo?
-   - Como equilibrar vida pessoal e profissional?
-
-2. **Próximos Passos:**
-   - Identifique suas forças únicas
-   - Busque mentoria e networking
-   - Invista em desenvolvimento contínuo
-
-**💭 Reflexão:** Sua carreira deve alinhar com seus valores e propósito de vida.
-
-O que mais te preocupa na sua vida profissional? 🤗`
+O que mais te incomoda em relação à sua autoestima? Vamos trabalhar isso juntos! 💙`
   }
 
   // Resposta geral para outras mensagens
@@ -150,6 +134,9 @@ Estou aqui para te apoiar em qualquer desafio que você esteja enfrentando.
 - ⭐ Desenvolvimento da autoestima
 - 💼 Orientação sobre carreira
 - 🌱 Estratégias de autocuidado
+
+**💭 Técnica rápida de bem-estar:**
+Respire fundo, feche os olhos por um momento e se pergunte: "Como posso ser gentil comigo mesmo hoje?"
 
 O que está em seu coração neste momento? Compartilhe comigo! 🤗`
 }
@@ -223,6 +210,7 @@ export async function POST(req: NextRequest) {
     const { messages } = body
 
     console.log(`📝 [${requestId}] Mensagens recebidas: ${messages?.length}`)
+    console.log(`📤 [${requestId}] Última mensagem: "${messages[messages.length - 1]?.content?.substring(0, 50)}..."`)
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       console.error(`❌ [${requestId}] Mensagens inválidas`)
@@ -312,13 +300,26 @@ IMPORTANTE: Seja concisa, empática e sempre termine com uma pergunta engajadora
     console.error(`❌ [${requestId}] Erro geral:`, error)
 
     // Fallback de emergência
-    const sofiaResponse = generateSofiaResponse([])
+    try {
+      const body: ChatRequest = await req.json()
+      const sofiaResponse = generateSofiaResponse(body.messages || [])
 
-    return NextResponse.json({
-      message: sofiaResponse,
-      success: true,
-      provider: "Sofia-Emergency",
-      responseTime: Date.now() - startTime,
-    })
+      return NextResponse.json({
+        message: sofiaResponse,
+        success: true,
+        provider: "Sofia-Emergency",
+        responseTime: Date.now() - startTime,
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+      })
+    } catch (fallbackError) {
+      console.error(`❌ [${requestId}] Erro no fallback:`, fallbackError)
+
+      return NextResponse.json({
+        message: generateSofiaResponse([]), // Garante que o fallback da Sofia sempre funcione
+        success: true,
+        provider: "Basic-Fallback",
+        responseTime: Date.now() - startTime,
+      })
+    }
   }
 }

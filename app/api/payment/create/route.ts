@@ -20,9 +20,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Validar CPF (básico)
-    const cpf = customerDocument?.replace(/\D/g, "") || "00000000000"
+    const cpf = customerDocument?.replace(/\D/g, "") || ""
     if (cpf.length !== 11) {
-      console.log("⚠️ CPF inválido, usando padrão")
+      return NextResponse.json({ success: false, message: "CPF inválido" }, { status: 400 })
     }
 
     // Mapear planos
@@ -50,7 +50,11 @@ export async function POST(req: NextRequest) {
 
     // Tentar criar PIX real com Banco Inter
     try {
-      const bancoInter = new BancoInterAPI()
+      const bancoInter = new BancoInterAPI({
+        clientId: process.env.CLIENT_ID || "fd1641ee-6011-4132-b2ea-b87ed8edc4c7",
+        clientSecret: process.env.CLIENT_SECRET || "c838f820-224d-486a-a519-290a60f8db48",
+        contaCorrente: process.env.CONTA_CORRENTE || "413825752",
+      })
       const pixResult = await bancoInter.createPixPayment({
         amount: expectedAmount,
         customerName,
